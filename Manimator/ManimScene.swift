@@ -1,0 +1,459 @@
+//
+//  ManimScene.swift
+//  Manimator
+//
+//  Visual-first data models. Objects are the source of truth;
+//  Manim Python code is auto-generated from them.
+//  Includes a Timeline model to sequence animations.
+//
+
+import SwiftUI
+import Observation
+
+// MARK: - Manim Object Model
+
+/// A single Manim object with all visual properties.
+struct ManimObject: Identifiable, Hashable {
+    var id: String                          // stable ID = variable name
+    var variableName: String                // e.g. "circle_1"
+    var typeName: String                    // e.g. "Circle", "FunctionGraph"
+    var position: CGPoint = .zero           // Manim coords (origin-center, y-up)
+    var color: String = "WHITE"             // stroke / main color
+    var fillColor: String? = nil            // fill color (nil = no separate fill)
+    var scale: Double = 1.0
+    var rotation: Double = 0.0             // degrees
+    var opacity: Double = 1.0
+    var strokeWidth: Double = 2.0
+    var text: String = ""                   // for Text/Tex/MathTex objects
+    
+    // Properties specific to graphs
+    var equation: String = "np.sin(x)"
+    var xRangeMin: Double = -5.0
+    var xRangeMax: Double = 5.0
+    var yRangeMin: Double = -3.0
+    var yRangeMax: Double = 3.0
+    
+    // MARK: - Static Data
+    
+    static let shapeTypes = [
+        "Circle", "Square", "Rectangle", "Triangle",
+        "RegularPolygon", "Polygon", "Ellipse", "Star",
+        "Dot", "Annulus", "Arc",
+    ]
+    
+    static let lineTypes = [
+        "Line", "Arrow", "DoubleArrow", "DashedLine",
+    ]
+    
+    static let textTypes = [
+        "Text", "Tex", "MathTex",
+    ]
+    
+    static let graphTypes = [
+        "FunctionGraph"
+    ]
+    
+    static var allTypes: [String] { shapeTypes + lineTypes + textTypes + graphTypes }
+    
+    static let manimColors = [
+        "WHITE", "GRAY", "BLACK",
+        "RED", "GREEN", "BLUE", "YELLOW",
+        "ORANGE", "PURPLE", "PINK", "TEAL",
+        "GOLD", "MAROON",
+        "RED_A", "RED_B", "RED_C", "RED_D",
+        "GREEN_A", "GREEN_B", "GREEN_C", "GREEN_D",
+        "BLUE_A", "BLUE_B", "BLUE_C", "BLUE_D",
+    ]
+    
+    /// SF Symbol for the object type
+    var iconName: String {
+        switch typeName.lowercased() {
+        case "circle": return "circle"
+        case "square": return "square"
+        case "rectangle": return "rectangle"
+        case "triangle": return "triangle"
+        case "regularpolygon", "polygon": return "hexagon"
+        case "ellipse": return "oval"
+        case "star": return "star"
+        case "dot": return "circle.fill"
+        case "annulus": return "circle.circle"
+        case "arc": return "arc"
+        case "line", "dashedline": return "line.diagonal"
+        case "arrow": return "arrow.right"
+        case "doublearrow": return "arrow.left.arrow.right"
+        case "text", "tex", "mathtex": return "textformat"
+        case "functiongraph": return "chart.xyaxis.line"
+        default: return "cube"
+        }
+    }
+    
+    /// SwiftUI Color from Manim color name
+    var swiftUIColor: Color {
+        switch color.uppercased() {
+        case "BLUE", "BLUE_A", "BLUE_B", "BLUE_C", "BLUE_D": return .blue
+        case "RED", "RED_A", "RED_B", "RED_C", "RED_D": return .red
+        case "GREEN", "GREEN_A", "GREEN_B", "GREEN_C", "GREEN_D": return .green
+        case "YELLOW": return .yellow
+        case "ORANGE": return .orange
+        case "PURPLE": return .purple
+        case "PINK": return .pink
+        case "WHITE": return .white
+        case "GRAY", "GREY": return .gray
+        case "BLACK": return Color(nsColor: .darkGray)
+        case "TEAL": return .teal
+        case "GOLD": return .yellow
+        case "MAROON": return Color(red: 0.5, green: 0, blue: 0)
+        default: return .white
+        }
+    }
+    
+    var isTextType: Bool { Self.textTypes.contains(typeName) }
+    var isLineType: Bool { Self.lineTypes.contains(typeName) }
+    var isGraphType: Bool { Self.graphTypes.contains(typeName) }
+}
+
+// MARK: - Animation Timeline Models
+
+struct ManimAnimation: Identifiable, Hashable {
+    let id = UUID()
+    var targetObjectID: String
+    var animationType: String
+    var duration: Double = 1.0
+    
+    static let types = [
+        "Create", "FadeIn", "FadeOut", "Write",
+        "DrawBorderThenFill", "GrowFromCenter",
+        "GrowFromEdge", "SpinInFromNothing",
+        "ShrinkToCenter", "Indicate",
+        "Flash", "Wiggle", "ApplyWave", "Uncreate"
+    ]
+}
+
+struct TimelineStep: Identifiable {
+    let id = UUID()
+    var animations: [ManimAnimation] = []
+    
+    // Custom wait time if not animating anything, or to add delay.
+    // If animations array is not empty, run_time applies to those concurrently.
+    // If animations array is empty and waitTime > 0, it behaves like `self.wait(waitTime)`.
+    var waitTime: Double = 1.0
+}
+
+// MARK: - Scene State (Source of Truth)
+
+@Observable
+class SceneState {
+    /// The canonical list of objects. This is the source of truth.
+    var objects: [ManimObject] = []
+    
+    /// The chronological steps of animations in the scene.
+    var timeline: [TimelineStep] = []
+    
+    var selectedObjectID: String? = nil
+    var selectedStepID: UUID? = nil
+    
+    var sceneName: String = "MyScene"
+    
+    /// Auto-generated code (read-only unless user switches to manual)
+    var generatedCode: String = ""
+    
+    /// When true, user is editing code manually (disable auto-generation)
+    var isManualCodeMode: Bool = false
+    
+    /// Counter for auto-naming objects
+    private var objectCounters: [String: Int] = [:]
+    
+    init() {
+        // Initialize with one empty wait step for convenience
+        timeline.append(TimelineStep(waitTime: 1.0))
+    }
+    
+    // MARK: - Object CRUD
+    
+    func addObject(type: String) {
+        let baseName = type.lowercased()
+        let count = (objectCounters[baseName] ?? 0) + 1
+        objectCounters[baseName] = count
+        let varName = "\(baseName)_\(count)"
+        
+        let jitterX = Double.random(in: -0.5...0.5)
+        let jitterY = Double.random(in: -0.5...0.5)
+        
+        var obj = ManimObject(
+            id: varName,
+            variableName: varName,
+            typeName: type,
+            position: CGPoint(x: jitterX, y: jitterY),
+            color: "BLUE"
+        )
+        
+        if ManimObject.textTypes.contains(type) {
+            obj.text = "Hello"
+            obj.color = "WHITE"
+        }
+        if type == "Dot" {
+            obj.scale = 1.0
+            obj.color = "YELLOW"
+        }
+        if ManimObject.lineTypes.contains(type) {
+            obj.color = "WHITE"
+        }
+        if ManimObject.graphTypes.contains(type) {
+            obj.color = "GREEN"
+        }
+        
+        objects.append(obj)
+        selectedObjectID = varName
+        regenerateCode()
+    }
+    
+    func deleteObject(id: String) {
+        objects.removeAll { $0.id == id }
+        if selectedObjectID == id {
+            selectedObjectID = nil
+        }
+        
+        // Remove object from all timeline steps
+        for i in 0..<timeline.count {
+            timeline[i].animations.removeAll { $0.targetObjectID == id }
+        }
+        
+        regenerateCode()
+    }
+    
+    func duplicateObject(id: String) {
+        guard let source = objects.first(where: { $0.id == id }) else { return }
+        let baseName = source.typeName.lowercased()
+        let count = (objectCounters[baseName] ?? 0) + 1
+        objectCounters[baseName] = count
+        let varName = "\(baseName)_\(count)"
+        
+        var copy = source
+        copy.id = varName
+        copy.variableName = varName
+        copy.position.x += 0.5
+        copy.position.y -= 0.5
+        
+        objects.append(copy)
+        selectedObjectID = varName
+        regenerateCode()
+    }
+    
+    func moveObject(id: String, to position: CGPoint) {
+        guard let idx = objects.firstIndex(where: { $0.id == id }) else { return }
+        objects[idx].position = position
+        regenerateCode()
+    }
+    
+    func updateObject(id: String, _ mutate: (inout ManimObject) -> Void) {
+        guard let idx = objects.firstIndex(where: { $0.id == id }) else { return }
+        let oldID = objects[idx].id
+        mutate(&objects[idx])
+        objects[idx].id = objects[idx].variableName
+        
+        // If variable name changed, update timeline references
+        if oldID != objects[idx].id {
+            for i in 0..<timeline.count {
+                for j in 0..<timeline[i].animations.count {
+                    if timeline[i].animations[j].targetObjectID == oldID {
+                        timeline[i].animations[j].targetObjectID = objects[idx].id
+                    }
+                }
+            }
+        }
+        regenerateCode()
+    }
+    
+    // MARK: - Timeline CRUD
+    
+    func addTimelineStep() {
+        let step = TimelineStep(waitTime: 1.0)
+        timeline.append(step)
+        selectedStepID = step.id
+        regenerateCode()
+    }
+    
+    func deleteTimelineStep(id: UUID) {
+        timeline.removeAll { $0.id == id }
+        if selectedStepID == id {
+            selectedStepID = timeline.last?.id
+        }
+        regenerateCode()
+    }
+    
+    func moveTimelineStep(from source: IndexSet, to destination: Int) {
+        timeline.move(fromOffsets: source, toOffset: destination)
+        regenerateCode()
+    }
+    
+    func addAnimation(toStepID stepID: UUID, targetObjectID: String, animationType: String) {
+        guard let stepIdx = timeline.firstIndex(where: { $0.id == stepID }) else { return }
+        let anim = ManimAnimation(targetObjectID: targetObjectID, animationType: animationType)
+        timeline[stepIdx].animations.append(anim)
+        regenerateCode()
+    }
+    
+    func deleteAnimation(stepID: UUID, animationID: UUID) {
+        guard let stepIdx = timeline.firstIndex(where: { $0.id == stepID }) else { return }
+        timeline[stepIdx].animations.removeAll { $0.id == animationID }
+        regenerateCode()
+    }
+    
+    func updateAnimationDuration(stepID: UUID, animationID: UUID, duration: Double) {
+        guard let stepIdx = timeline.firstIndex(where: { $0.id == stepID }),
+              let animIdx = timeline[stepIdx].animations.firstIndex(where: { $0.id == animationID }) else { return }
+        timeline[stepIdx].animations[animIdx].duration = duration
+        regenerateCode()
+    }
+    
+    func updateAnimationType(stepID: UUID, animationID: UUID, type: String) {
+        guard let stepIdx = timeline.firstIndex(where: { $0.id == stepID }),
+              let animIdx = timeline[stepIdx].animations.firstIndex(where: { $0.id == animationID }) else { return }
+        timeline[stepIdx].animations[animIdx].animationType = type
+        regenerateCode()
+    }
+    
+    // MARK: - Code Generation
+    
+    func regenerateCode() {
+        guard !isManualCodeMode else { return }
+        
+        var lines: [String] = []
+        lines.append("from manim import *")
+        // Need math library for graphing
+        lines.append("import numpy as np")
+        lines.append("")
+        lines.append("class \(sceneName)(Scene):")
+        lines.append("    def construct(self):")
+        
+        if objects.isEmpty && timeline.isEmpty {
+            lines.append("        pass")
+        } else {
+            // 1. Object creations
+            for obj in objects {
+                if obj.isGraphType {
+                    let axesVar = "\(obj.variableName)_axes"
+                    let graphVar = "\(obj.variableName)_graph"
+                    
+                    lines.append("        \(axesVar) = Axes(")
+                    let xInterval = max(1.0, (obj.xRangeMax - obj.xRangeMin) / 5)
+                    let yInterval = max(1.0, (obj.yRangeMax - obj.yRangeMin) / 5)
+                    
+                    lines.append("            x_range=[\(obj.xRangeMin), \(obj.xRangeMax), \(String(format: "%.1f", xInterval))],")
+                    lines.append("            y_range=[\(obj.yRangeMin), \(obj.yRangeMax), \(String(format: "%.1f", yInterval))],")
+                    lines.append("        )")
+                    lines.append("        \(graphVar) = \(axesVar).plot(lambda x: \(obj.equation), color=\(obj.color))")
+                    lines.append("        \(obj.variableName) = VGroup(\(axesVar), \(graphVar))")
+                    
+                    if obj.position.x != 0 || obj.position.y != 0 {
+                        let x = String(format: "%.2f", obj.position.x)
+                        let y = String(format: "%.2f", obj.position.y)
+                        lines.append("        \(obj.variableName).move_to([\(x), \(y), 0])")
+                    }
+                    if abs(obj.scale - 1.0) > 0.01 {
+                        lines.append("        \(obj.variableName).scale(\(String(format: "%.2f", obj.scale)))")
+                    }
+                    if abs(obj.rotation) > 0.1 {
+                        let rad = String(format: "%.4f", obj.rotation * .pi / 180.0)
+                        lines.append("        \(obj.variableName).rotate(\(rad))")
+                    }
+                    if abs(obj.opacity - 1.0) > 0.01 {
+                        lines.append("        \(obj.variableName).set_opacity(\(String(format: "%.2f", obj.opacity)))")
+                    }
+                    lines.append("")
+                    continue
+                }
+                
+                lines.append("        \(generateCreationLine(obj))")
+                
+                if obj.position.x != 0 || obj.position.y != 0 {
+                    let x = String(format: "%.2f", obj.position.x)
+                    let y = String(format: "%.2f", obj.position.y)
+                    lines.append("        \(obj.variableName).move_to([\(x), \(y), 0])")
+                }
+                if abs(obj.scale - 1.0) > 0.01 {
+                    lines.append("        \(obj.variableName).scale(\(String(format: "%.2f", obj.scale)))")
+                }
+                if abs(obj.rotation) > 0.1 {
+                    let rad = String(format: "%.4f", obj.rotation * .pi / 180.0)
+                    lines.append("        \(obj.variableName).rotate(\(rad))")
+                }
+                if abs(obj.opacity - 1.0) > 0.01 {
+                    lines.append("        \(obj.variableName).set_opacity(\(String(format: "%.2f", obj.opacity)))")
+                }
+                if abs(obj.strokeWidth - 2.0) > 0.1 {
+                    lines.append("        \(obj.variableName).set_stroke(width=\(String(format: "%.1f", obj.strokeWidth)))")
+                }
+                lines.append("")
+            }
+            
+            // 2. Timeline playing
+            lines.append("        # --- Timeline ---")
+            for (index, step) in timeline.enumerated() {
+                lines.append("        # Step \(index + 1)")
+                if step.animations.isEmpty {
+                    lines.append("        self.wait(\(String(format: "%.1f", step.waitTime)))")
+                } else {
+                    // Group animations with the same duration for simplicity, or just play them all with the max run_time
+                    // A proper manim self.play accepts multiple objects. If they have different run_times, it's slightly trickier in one call.
+                    // We'll write one self.play() and apply the max run_time across all animations in the step.
+                    let maxDuration = step.animations.map { $0.duration }.max() ?? 1.0
+                    var animStrings: [String] = []
+                    for anim in step.animations {
+                        // Check if object exists
+                        if objects.contains(where: { $0.id == anim.targetObjectID }) {
+                            animStrings.append("\(anim.animationType)(\(anim.targetObjectID))")
+                        }
+                    }
+                    
+                    if !animStrings.isEmpty {
+                        let inner = animStrings.joined(separator: ", ")
+                        lines.append("        self.play(\(inner), run_time=\(String(format: "%.1f", maxDuration)))")
+                    } else {
+                        lines.append("        self.wait(\(String(format: "%.1f", step.waitTime)))")
+                    }
+                }
+                lines.append("")
+            }
+        }
+        
+        generatedCode = lines.joined(separator: "\n")
+    }
+    
+    private func generateCreationLine(_ obj: ManimObject) -> String {
+        var args: [String] = []
+        
+        switch obj.typeName {
+        case "Text":
+            args.append("\"\(obj.text)\"")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "Tex", "MathTex":
+            args.append("r\"\(obj.text)\"")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "Line", "Arrow", "DoubleArrow", "DashedLine":
+            args.append("LEFT")
+            args.append("RIGHT")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "RegularPolygon":
+            args.append("n=6")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        default:
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        }
+        
+        if let fill = obj.fillColor {
+            args.append("fill_color=\(fill)")
+            args.append("fill_opacity=\(String(format: "%.2f", obj.opacity))")
+        }
+        
+        return "\(obj.variableName) = \(obj.typeName)(\(args.joined(separator: ", ")))"
+    }
+    
+    // MARK: - Parse from manual code
+    
+    func parseObjectsFromCode() {
+        // Skip for now, to keep the MVP visual editor simple.
+        // It's much harder to parse complex timelines and equations bidirectionally.
+        print("Bidirectional parsing not fully supported for Timeline/Graphs yet.")
+    }
+}

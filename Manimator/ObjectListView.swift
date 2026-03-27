@@ -1,0 +1,391 @@
+//
+//  ObjectListView.swift
+//  Manimator
+//
+//  Object list + inspector panel. Lists all objects; when one is selected,
+//  shows all editable properties below.
+//
+
+import SwiftUI
+
+struct ObjectListView: View {
+    @Bindable var sceneState: SceneState
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: "list.bullet.rectangle")
+                    .foregroundStyle(.secondary)
+                Text("Scene Objects")
+                    .font(.headline)
+                Spacer()
+                Text("\(sceneState.objects.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            
+            Divider()
+            
+            if sceneState.objects.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "plus.circle.dashed")
+                        .font(.largeTitle)
+                        .foregroundStyle(.tertiary)
+                    Text("No objects yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Click + in the toolbar\nto add objects")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(spacing: 2) {
+                        // Object list
+                        ForEach(sceneState.objects) { obj in
+                            ObjectListRow(
+                                object: obj,
+                                isSelected: obj.id == sceneState.selectedObjectID,
+                                onSelect: { sceneState.selectedObjectID = obj.id },
+                                onDelete: { sceneState.deleteObject(id: obj.id) }
+                            )
+                        }
+                        
+                        Divider().padding(.vertical, 4)
+                        
+                        // Inspector for selected object
+                        if let selID = sceneState.selectedObjectID,
+                           let _ = sceneState.objects.first(where: { $0.id == selID }) {
+                            InspectorPanel(sceneState: sceneState, objectID: selID)
+                        } else {
+                            Text("Select an object to inspect")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding()
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+}
+
+// MARK: - Object List Row
+
+struct ObjectListRow: View {
+    let object: ManimObject
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(object.swiftUIColor.opacity(0.2))
+                    .frame(width: 24, height: 24)
+                Image(systemName: object.iconName)
+                    .font(.system(size: 10))
+                    .foregroundColor(object.swiftUIColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 1) {
+                Text(object.variableName)
+                    .font(.system(.caption, design: .monospaced, weight: .medium))
+                Text(object.typeName)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Button(role: .destructive) { onDelete() } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .opacity(isSelected ? 1 : 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.accentColor.opacity(0.12) : .clear)
+        )
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect() }
+    }
+}
+
+// MARK: - Inspector Panel
+
+struct InspectorPanel: View {
+    @Bindable var sceneState: SceneState
+    let objectID: String
+    
+    private var object: ManimObject? {
+        sceneState.objects.first(where: { $0.id == objectID })
+    }
+    
+    var body: some View {
+        if let obj = object {
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(.secondary)
+                    Text("Inspector")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                
+                // Variable name
+                InspectorRow(label: "Name") {
+                    TextField("name", text: Binding(
+                        get: { obj.variableName },
+                        set: { newVal in
+                            let clean = newVal.replacingOccurrences(of: " ", with: "_")
+                                .lowercased()
+                                .filter { $0.isLetter || $0.isNumber || $0 == "_" }
+                            if !clean.isEmpty {
+                                sceneState.updateObject(id: objectID) { $0.variableName = clean }
+                            }
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.caption, design: .monospaced))
+                }
+                
+                // Text content (for text types)
+                if obj.isTextType {
+                    InspectorRow(label: "Text") {
+                        TextField("content", text: Binding(
+                            get: { obj.text },
+                            set: { newVal in
+                                sceneState.updateObject(id: objectID) { $0.text = newVal }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                
+                // Graph content (for FunctionGraph)
+                if obj.isGraphType {
+                    InspectorRow(label: "Equation (f(x))") {
+                        TextField("np.sin(x)", text: Binding(
+                            get: { obj.equation },
+                            set: { newVal in
+                                sceneState.updateObject(id: objectID) { $0.equation = newVal }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+                    }
+                    
+                    InspectorRow(label: "X Range") {
+                        HStack(spacing: 6) {
+                            NumField(label: "Min", value: obj.xRangeMin) { v in
+                                sceneState.updateObject(id: objectID) { $0.xRangeMin = v }
+                            }
+                            NumField(label: "Max", value: obj.xRangeMax) { v in
+                                sceneState.updateObject(id: objectID) { $0.xRangeMax = v }
+                            }
+                        }
+                    }
+                    
+                    InspectorRow(label: "Y Range") {
+                        HStack(spacing: 6) {
+                            NumField(label: "Min", value: obj.yRangeMin) { v in
+                                sceneState.updateObject(id: objectID) { $0.yRangeMin = v }
+                            }
+                            NumField(label: "Max", value: obj.yRangeMax) { v in
+                                sceneState.updateObject(id: objectID) { $0.yRangeMax = v }
+                            }
+                        }
+                    }
+                }
+                
+                // Color
+                InspectorRow(label: "Color") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 3) {
+                            ForEach(ManimObject.manimColors, id: \.self) { colorName in
+                                Circle()
+                                    .fill(colorSwiftUI(colorName))
+                                    .frame(width: 16, height: 16)
+                                    .overlay(
+                                        Circle().stroke(
+                                            obj.color == colorName ? .white : .clear,
+                                            lineWidth: 2
+                                        )
+                                    )
+                                    .onTapGesture {
+                                        sceneState.updateObject(id: objectID) { $0.color = colorName }
+                                    }
+                                    .help(colorName)
+                            }
+                        }
+                    }
+                }
+                
+                // Position
+                InspectorRow(label: "Position") {
+                    HStack(spacing: 6) {
+                        NumField(label: "X", value: obj.position.x) { v in
+                            sceneState.moveObject(id: objectID, to: CGPoint(x: v, y: obj.position.y))
+                        }
+                        NumField(label: "Y", value: obj.position.y) { v in
+                            sceneState.moveObject(id: objectID, to: CGPoint(x: obj.position.x, y: v))
+                        }
+                    }
+                }
+                
+                // Scale
+                InspectorSlider(label: "Scale", value: obj.scale, range: 0.1...5.0, step: 0.1, format: "%.2f") { v in
+                    sceneState.updateObject(id: objectID) { $0.scale = v }
+                }
+                
+                // Rotation
+                InspectorSlider(label: "Rotation", value: obj.rotation, range: 0...360, step: 5, format: "%.0f°") { v in
+                    sceneState.updateObject(id: objectID) { $0.rotation = v }
+                }
+                
+                // Opacity
+                InspectorSlider(label: "Opacity", value: obj.opacity, range: 0...1, step: 0.05, format: "%.2f") { v in
+                    sceneState.updateObject(id: objectID) { $0.opacity = v }
+                }
+                
+                // Stroke width
+                InspectorSlider(label: "Stroke", value: obj.strokeWidth, range: 0.5...10, step: 0.5, format: "%.1f") { v in
+                    sceneState.updateObject(id: objectID) { $0.strokeWidth = v }
+                }
+                
+                Divider().padding(.horizontal, 12)
+                
+                // Delete
+                Button(role: .destructive) {
+                    sceneState.deleteObject(id: objectID)
+                } label: {
+                    HStack {
+                        Image(systemName: "trash")
+                        Text("Delete Object")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+    
+    private func colorSwiftUI(_ name: String) -> Color {
+        switch name.uppercased() {
+        case "BLUE", "BLUE_A", "BLUE_B", "BLUE_C", "BLUE_D": return .blue
+        case "RED", "RED_A", "RED_B", "RED_C", "RED_D": return .red
+        case "GREEN", "GREEN_A", "GREEN_B", "GREEN_C", "GREEN_D": return .green
+        case "YELLOW": return .yellow
+        case "ORANGE": return .orange
+        case "PURPLE": return .purple
+        case "PINK": return .pink
+        case "WHITE": return .white
+        case "GRAY", "GREY": return .gray
+        case "BLACK": return Color(nsColor: .darkGray)
+        case "TEAL": return .teal
+        case "GOLD": return .yellow
+        case "MAROON": return Color(red: 0.5, green: 0, blue: 0)
+        default: return .white
+        }
+    }
+}
+
+// MARK: - Inspector Helpers
+
+struct InspectorRow<Content: View>: View {
+    let label: String
+    @ViewBuilder let content: Content
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            content
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+struct InspectorSlider: View {
+    let label: String
+    let value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: String
+    let onChange: (Double) -> Void
+    
+    var body: some View {
+        InspectorRow(label: label) {
+            HStack(spacing: 6) {
+                Slider(value: Binding(
+                    get: { value },
+                    set: { onChange($0) }
+                ), in: range, step: step)
+                .controlSize(.small)
+                
+                Text(String(format: format, value))
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+    }
+}
+
+struct NumField: View {
+    let label: String
+    let value: Double
+    let onCommit: (Double) -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(.caption2, design: .monospaced, weight: .bold))
+                .foregroundStyle(.tertiary)
+            TextField("0", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption2, design: .monospaced))
+                .frame(width: 52)
+                .focused($focused)
+                .onSubmit { commit() }
+                .onChange(of: focused) { _, f in if !f { commit() } }
+        }
+        .onAppear { text = String(format: "%.2f", value) }
+        .onChange(of: value) { _, v in if !focused { text = String(format: "%.2f", v) } }
+    }
+    
+    private func commit() {
+        if let v = Double(text) { onCommit(v) }
+    }
+}
