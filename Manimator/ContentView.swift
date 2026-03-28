@@ -10,7 +10,7 @@ import SwiftUI
 import AVKit
 
 struct ContentView: View {
-    @State private var sceneState = SceneState()
+    @Bindable var sceneState: SceneState
     @State private var renderer = ManimRenderer()
     @State private var showAddPanel = false
     @State private var showConsole = false
@@ -102,7 +102,7 @@ struct ContentView: View {
                     
                     // Inspector sidebar
                     if showObjectList {
-                        ObjectListView(sceneState: sceneState)
+                        ObjectListView(sceneState: sceneState, isPresented: $showObjectList)
                             .frame(minHeight: 200, idealHeight: 350)
                     }
                 }
@@ -355,6 +355,6 @@ struct SettingsPopover: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(sceneState: SceneState())
         .frame(width: 1200, height: 750)
 }

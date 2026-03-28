@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ObjectListView: View {
     @Bindable var sceneState: SceneState
+    @Binding var isPresented: Bool
     
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +28,13 @@ struct ObjectListView: View {
                     .padding(.vertical, 2)
                     .background(.quaternary)
                     .clipShape(Capsule())
+                    
+                Button(action: { isPresented = false }) {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .padding(.leading, 4)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

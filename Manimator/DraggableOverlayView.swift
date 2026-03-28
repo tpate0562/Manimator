@@ -16,6 +16,7 @@ struct DraggableOverlayView: View {
     
     @State private var draggedObjectID: String? = nil
     @State private var dragCurrentScreenPos: CGPoint = .zero
+    @State private var hoverLocation: CGPoint? = nil
     
     var body: some View {
         GeometryReader { geo in
@@ -57,6 +58,37 @@ struct DraggableOverlayView: View {
                         .onTapGesture {
                             sceneState.selectedObjectID = object.id
                         }
+                }
+                
+                // Crosshairs
+                if let loc = hoverLocation {
+                    let manimLoc = screenToManim(loc, in: geo.size)
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: loc.y))
+                        path.addLine(to: CGPoint(x: geo.size.width, y: loc.y))
+                        path.move(to: CGPoint(x: loc.x, y: 0))
+                        path.addLine(to: CGPoint(x: loc.x, y: geo.size.height))
+                    }
+                    .stroke(Color.gray.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
+                    .allowsHitTesting(false)
+                    
+                    Text(String(format: "(%.2f, %.2f)", manimLoc.x, manimLoc.y))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .position(x: loc.x > geo.size.width - 60 ? loc.x - 40 : loc.x + 40,
+                                  y: loc.y > geo.size.height - 30 ? loc.y - 20 : loc.y + 20)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    hoverLocation = location
+                case .ended:
+                    hoverLocation = nil
                 }
             }
         }

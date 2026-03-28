@@ -13,7 +13,7 @@ import Observation
 // MARK: - Manim Object Model
 
 /// A single Manim object with all visual properties.
-struct ManimObject: Identifiable, Hashable {
+struct ManimObject: Identifiable, Hashable, Codable {
     var id: String                          // stable ID = variable name
     var variableName: String                // e.g. "circle_1"
     var typeName: String                    // e.g. "Circle", "FunctionGraph"
@@ -120,7 +120,7 @@ struct ManimObject: Identifiable, Hashable {
 
 // MARK: - Animation Timeline Models
 
-struct ManimAnimation: Identifiable, Hashable {
+struct ManimAnimation: Identifiable, Hashable, Codable {
     let id = UUID()
     var targetObjectID: String
     var animationType: String
@@ -129,6 +129,7 @@ struct ManimAnimation: Identifiable, Hashable {
     // For MoveTo animations
     var targetX: Double = 0.0
     var targetY: Double = 0.0
+    var targetScale: Double = 1.0
     
     static let types = [
         "Create", "FadeIn", "FadeOut", "Write",
@@ -140,7 +141,7 @@ struct ManimAnimation: Identifiable, Hashable {
     ]
 }
 
-struct TimelineStep: Identifiable {
+struct TimelineStep: Identifiable, Codable {
     let id = UUID()
     var animations: [ManimAnimation] = []
     
@@ -151,6 +152,12 @@ struct TimelineStep: Identifiable {
 }
 
 // MARK: - Scene State (Source of Truth)
+
+struct SceneStateDTO: Codable {
+    var sceneName: String
+    var objects: [ManimObject]
+    var timeline: [TimelineStep]
+}
 
 @Observable
 class SceneState {
@@ -172,14 +179,42 @@ class SceneState {
     var isManualCodeMode: Bool = false
     
     /// Counter for auto-naming objects
-    private var objectCounters: [String: Int] = [:]
+    var objectCounters: [String: Int] = [:]
     
     init() {
         // Initialize with one empty wait step for convenience
         timeline.append(TimelineStep(waitTime: 1.0))
     }
     
-    // MARK: - Object CRUD
+    // MARK: - Serialization
+    
+    func exportJSON() -> Data? {
+        let dto = SceneStateDTO(sceneName: sceneName, objects: objects, timeline: timeline)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        return try? encoder.encode(dto)
+    }
+    
+    func importJSON(data: Data) {
+        if let dto = try? JSONDecoder().decode(SceneStateDTO.self, from: data) {
+            self.sceneName = dto.sceneName
+            self.objects = dto.objects
+            self.timeline = dto.timeline
+            
+            self.objectCounters.removeAll()
+            for obj in self.objects {
+                let baseName = obj.typeName.lowercased()
+                let current = self.objectCounters[baseName] ?? 0
+                self.objectCounters[baseName] = current + 1
+            }
+            
+            self.selectedObjectID = nil
+            self.selectedStepID = nil
+            self.regenerateCode()
+        }
+    }
+    
+    // MARK: - Object Management
     
     func addObject(type: String) {
         let baseName = type.lowercased()
@@ -290,7 +325,7 @@ class SceneState {
         copy.animations = copy.animations.map {
             var anim = $0
             // Generates new UUIDs for the animations inside the step automatically because ManimAnimation is a struct, wait, no, ManimAnimation has a `let id = UUID()`. So a simple copy keeps the old UUIDs which violates Identifiable. Let's make a fresh ManimAnimation for each.
-            return ManimAnimation(targetObjectID: anim.targetObjectID, animationType: anim.animationType, duration: anim.duration, targetX: anim.targetX, targetY: anim.targetY)
+            return ManimAnimation(targetObjectID: anim.targetObjectID, animationType: anim.animationType, duration: anim.duration, targetX: anim.targetX, targetY: anim.targetY, targetScale: anim.targetScale)
         }
         timeline.insert(copy, at: idx + 1)
         selectedStepID = copy.id
@@ -310,9 +345,8 @@ class SceneState {
         regenerateCode()
     }
     
-    func addAnimation(toStepID stepID: UUID, targetObjectID: String, animationType: String) {
+    func addAnimation(_ anim: ManimAnimation, toStepID stepID: UUID) {
         guard let stepIdx = timeline.firstIndex(where: { $0.id == stepID }) else { return }
-        let anim = ManimAnimation(targetObjectID: targetObjectID, animationType: animationType)
         timeline[stepIdx].animations.append(anim)
         regenerateCode()
     }
@@ -427,7 +461,11 @@ class SceneState {
                         // Check if object exists
                         if objects.contains(where: { $0.id == anim.targetObjectID }) {
                             if anim.animationType == "MoveTo" {
-                                animStrings.append("\(anim.targetObjectID).animate.move_to([\(String(format: "%.2f", anim.targetX)), \(String(format: "%.2f", anim.targetY)), 0])")
+                                var moveCmd = "\(anim.targetObjectID).animate.move_to([\(String(format: "%.2f", anim.targetX)), \(String(format: "%.2f", anim.targetY)), 0])"
+                                if abs(anim.targetScale - 1.0) > 0.01 {
+                                    moveCmd += ".scale(\(String(format: "%.2f", anim.targetScale)))"
+                                }
+                                animStrings.append(moveCmd)
                             } else {
                                 animStrings.append("\(anim.animationType)(\(anim.targetObjectID))")
                             }

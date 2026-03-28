@@ -98,10 +98,24 @@ struct TimelineStepView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
                     if step.animations.isEmpty {
-                        Text("Wait \(String(format: "%.1f", step.waitTime))s")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 8)
+                        HStack(spacing: 4) {
+                            Text("Wait")
+                            TextField("s", value: Binding(
+                                get: { step.waitTime },
+                                set: { newVal in
+                                    if let idx = sceneState.timeline.firstIndex(where: { $0.id == step.id }) {
+                                        sceneState.timeline[idx].waitTime = max(0.1, newVal)
+                                        sceneState.regenerateCode()
+                                    }
+                                }
+                            ), format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 40)
+                            Text("s")
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
                     } else {
                         ForEach(step.animations) { anim in
                             AnimationCell(sceneState: sceneState, stepID: step.id, animation: anim)
@@ -201,6 +215,10 @@ struct AddAnimationPopover: View {
     
     @State private var selectedObjectID: String = ""
     @State private var selectedAnimType: String = "Create"
+    @State private var duration: Double = 1.0
+    @State private var targetX: Double = 0.0
+    @State private var targetY: Double = 0.0
+    @State private var targetScale: Double = 1.0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -236,9 +254,37 @@ struct AddAnimationPopover: View {
                     .labelsHidden()
                 }
                 
+                if selectedAnimType == "MoveTo" {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Target X")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("X", value: $targetX, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                        
+                        Text("Target Y")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Y", value: $targetY, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                        
+                        Text("Target Scale")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Scale", value: $targetScale, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                
                 Button("Add") {
                     if !selectedObjectID.isEmpty {
-                        sceneState.addAnimation(toStepID: stepID, targetObjectID: selectedObjectID, animationType: selectedAnimType)
+                        var anim = ManimAnimation(targetObjectID: selectedObjectID, animationType: selectedAnimType, duration: duration)
+                        if selectedAnimType == "MoveTo" {
+                            anim.targetX = targetX
+                            anim.targetY = targetY
+                            anim.targetScale = targetScale
+                        }
+                        sceneState.addAnimation(anim, toStepID: stepID)
                         dismiss()
                     }
                 }
@@ -265,6 +311,7 @@ struct EditAnimationPopover: View {
     @State private var duration: Double = 1.0
     @State private var targetX: Double = 0.0
     @State private var targetY: Double = 0.0
+    @State private var targetScale: Double = 1.0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -293,6 +340,12 @@ struct EditAnimationPopover: View {
                         .foregroundStyle(.secondary)
                     TextField("Y", value: $targetY, format: .number)
                         .textFieldStyle(.roundedBorder)
+                        
+                    Text("Target Scale")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Scale", value: $targetScale, format: .number)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
             
@@ -302,6 +355,7 @@ struct EditAnimationPopover: View {
                     sceneState.timeline[stepIdx].animations[animIdx].duration = duration
                     sceneState.timeline[stepIdx].animations[animIdx].targetX = targetX
                     sceneState.timeline[stepIdx].animations[animIdx].targetY = targetY
+                    sceneState.timeline[stepIdx].animations[animIdx].targetScale = targetScale
                     sceneState.regenerateCode()
                 }
                 dismiss()
@@ -315,6 +369,7 @@ struct EditAnimationPopover: View {
             duration = animation.duration
             targetX = animation.targetX
             targetY = animation.targetY
+            targetScale = animation.targetScale
         }
     }
 }
