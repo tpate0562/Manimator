@@ -87,6 +87,10 @@ struct TimelineStepView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(sceneState.selectedStepID == step.id ? Color.accentColor : Color(nsColor: .windowBackgroundColor))
+            .contextMenu {
+                Button("Duplicate Step") { sceneState.duplicateTimelineStep(id: step.id) }
+                Button("Delete Step", role: .destructive) { sceneState.deleteTimelineStep(id: step.id) }
+            }
             
             Divider()
             
@@ -142,6 +146,8 @@ struct AnimationCell: View {
     let stepID: UUID
     let animation: ManimAnimation
     
+    @State private var showEditPopover = false
+    
     var body: some View {
         HStack(spacing: 4) {
             // Icon
@@ -178,6 +184,13 @@ struct AnimationCell: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 4))
+        .contextMenu {
+            Button("Edit Animation...") { showEditPopover = true }
+            Button("Delete", role: .destructive) { sceneState.deleteAnimation(stepID: stepID, animationID: animation.id) }
+        }
+        .popover(isPresented: $showEditPopover) {
+            EditAnimationPopover(sceneState: sceneState, stepID: stepID, animation: animation)
+        }
     }
 }
 
@@ -239,6 +252,69 @@ struct AddAnimationPopover: View {
             if let first = sceneState.objects.first {
                 selectedObjectID = first.id
             }
+        }
+    }
+}
+
+struct EditAnimationPopover: View {
+    @Bindable var sceneState: SceneState
+    let stepID: UUID
+    let animation: ManimAnimation
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var duration: Double = 1.0
+    @State private var targetX: Double = 0.0
+    @State private var targetY: Double = 0.0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit \(animation.animationType)")
+                .font(.headline)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Duration (s)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $duration, in: 0.1...10, step: 0.1)
+                Text(String(format: "%.1f", duration))
+                    .font(.caption2)
+            }
+            
+            if animation.animationType == "MoveTo" {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Target X")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("X", value: $targetX, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    Text("Target Y")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Y", value: $targetY, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            
+            Button("Save") {
+                if let stepIdx = sceneState.timeline.firstIndex(where: { $0.id == stepID }),
+                   let animIdx = sceneState.timeline[stepIdx].animations.firstIndex(where: { $0.id == animation.id }) {
+                    sceneState.timeline[stepIdx].animations[animIdx].duration = duration
+                    sceneState.timeline[stepIdx].animations[animIdx].targetX = targetX
+                    sceneState.timeline[stepIdx].animations[animIdx].targetY = targetY
+                    sceneState.regenerateCode()
+                }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding()
+        .frame(width: 220)
+        .onAppear {
+            duration = animation.duration
+            targetX = animation.targetX
+            targetY = animation.targetY
         }
     }
 }

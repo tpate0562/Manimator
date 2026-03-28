@@ -87,8 +87,14 @@ struct ManimObject: Identifiable, Hashable {
         }
     }
     
-    /// SwiftUI Color from Manim color name
+    /// SwiftUI Color from Manim color name or Custom Hex
     var swiftUIColor: Color {
+        if color.hasPrefix("\"#") && color.hasSuffix("\"") {
+            let hex = String(color.dropFirst(2).dropLast(1))
+            if let uiColor = NSColor(hexString: hex) {
+                return Color(nsColor: uiColor)
+            }
+        }
         switch color.uppercased() {
         case "BLUE", "BLUE_A", "BLUE_B", "BLUE_C", "BLUE_D": return .blue
         case "RED", "RED_A", "RED_B", "RED_C", "RED_D": return .red
@@ -120,12 +126,17 @@ struct ManimAnimation: Identifiable, Hashable {
     var animationType: String
     var duration: Double = 1.0
     
+    // For MoveTo animations
+    var targetX: Double = 0.0
+    var targetY: Double = 0.0
+    
     static let types = [
         "Create", "FadeIn", "FadeOut", "Write",
         "DrawBorderThenFill", "GrowFromCenter",
         "GrowFromEdge", "SpinInFromNothing",
         "ShrinkToCenter", "Indicate",
-        "Flash", "Wiggle", "ApplyWave", "Uncreate"
+        "Flash", "Wiggle", "ApplyWave", "Uncreate",
+        "MoveTo"
     ]
 }
 
@@ -273,6 +284,19 @@ class SceneState {
         regenerateCode()
     }
     
+    func duplicateTimelineStep(id: UUID) {
+        guard let idx = timeline.firstIndex(where: { $0.id == id }) else { return }
+        var copy = timeline[idx]
+        copy.animations = copy.animations.map {
+            var anim = $0
+            // Generates new UUIDs for the animations inside the step automatically because ManimAnimation is a struct, wait, no, ManimAnimation has a `let id = UUID()`. So a simple copy keeps the old UUIDs which violates Identifiable. Let's make a fresh ManimAnimation for each.
+            return ManimAnimation(targetObjectID: anim.targetObjectID, animationType: anim.animationType, duration: anim.duration, targetX: anim.targetX, targetY: anim.targetY)
+        }
+        timeline.insert(copy, at: idx + 1)
+        selectedStepID = copy.id
+        regenerateCode()
+    }
+    
     func deleteTimelineStep(id: UUID) {
         timeline.removeAll { $0.id == id }
         if selectedStepID == id {
@@ -402,7 +426,11 @@ class SceneState {
                     for anim in step.animations {
                         // Check if object exists
                         if objects.contains(where: { $0.id == anim.targetObjectID }) {
-                            animStrings.append("\(anim.animationType)(\(anim.targetObjectID))")
+                            if anim.animationType == "MoveTo" {
+                                animStrings.append("\(anim.targetObjectID).animate.move_to([\(String(format: "%.2f", anim.targetX)), \(String(format: "%.2f", anim.targetY)), 0])")
+                            } else {
+                                animStrings.append("\(anim.animationType)(\(anim.targetObjectID))")
+                            }
                         }
                     }
                     
@@ -457,3 +485,25 @@ class SceneState {
         print("Bidirectional parsing not fully supported for Timeline/Graphs yet.")
     }
 }
+
+// MARK: - NSColor Hex Extension
+extension NSColor {
+    convenience init?(hexString: String) {
+        let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int = UInt64()
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: CGFloat(a) / 255)
+    }
+}
+

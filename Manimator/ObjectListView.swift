@@ -158,46 +158,35 @@ struct InspectorPanel: View {
                 
                 // Variable name
                 InspectorRow(label: "Name") {
-                    TextField("name", text: Binding(
-                        get: { obj.variableName },
-                        set: { newVal in
-                            let clean = newVal.replacingOccurrences(of: " ", with: "_")
-                                .lowercased()
-                                .filter { $0.isLetter || $0.isNumber || $0 == "_" }
-                            if !clean.isEmpty {
-                                sceneState.updateObject(id: objectID) { $0.variableName = clean }
-                            }
+                    StringField(placeholder: "name", value: obj.variableName) { newVal in
+                        let clean = newVal.replacingOccurrences(of: " ", with: "_")
+                            .lowercased()
+                            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
+                        if !clean.isEmpty && clean != obj.variableName {
+                            sceneState.updateObject(id: objectID) { $0.variableName = clean }
                         }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.caption, design: .monospaced))
+                    }
                 }
                 
                 // Text content (for text types)
                 if obj.isTextType {
                     InspectorRow(label: "Text") {
-                        TextField("content", text: Binding(
-                            get: { obj.text },
-                            set: { newVal in
+                        StringField(placeholder: "content", value: obj.text) { newVal in
+                            if newVal != obj.text {
                                 sceneState.updateObject(id: objectID) { $0.text = newVal }
                             }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.caption, design: .monospaced))
+                        }
                     }
                 }
                 
                 // Graph content (for FunctionGraph)
                 if obj.isGraphType {
                     InspectorRow(label: "Equation (f(x))") {
-                        TextField("np.sin(x)", text: Binding(
-                            get: { obj.equation },
-                            set: { newVal in
+                        StringField(placeholder: "np.sin(x)", value: obj.equation) { newVal in
+                            if newVal != obj.equation {
                                 sceneState.updateObject(id: objectID) { $0.equation = newVal }
                             }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.caption, design: .monospaced))
+                        }
                     }
                     
                     InspectorRow(label: "X Range") {
@@ -225,22 +214,44 @@ struct InspectorPanel: View {
                 
                 // Color
                 InspectorRow(label: "Color") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 3) {
-                            ForEach(ManimObject.manimColors, id: \.self) { colorName in
-                                Circle()
-                                    .fill(colorSwiftUI(colorName))
-                                    .frame(width: 16, height: 16)
-                                    .overlay(
-                                        Circle().stroke(
-                                            obj.color == colorName ? .white : .clear,
-                                            lineWidth: 2
+                    HStack(spacing: 8) {
+                        ColorPicker("", selection: Binding(
+                            get: {
+                                // Try to construct a SwiftUI Color from our string
+                                let swiftUICol = obj.swiftUIColor
+                                // If the hex string isn't an exact match, swiftUIColor falls back to white.
+                                // But since SwiftUI's ColorPicker modifies rgb, we'll store it as hex back to Manim.
+                                return swiftUICol
+                            },
+                            set: { newColor in
+                                guard let cgColor = newColor.cgColor else { return }
+                                let str = String(format: "\"#%02x%02x%02x\"",
+                                                 Int(cgColor.components![0] * 255),
+                                                 Int(cgColor.components![1] * 255),
+                                                 Int(cgColor.components![2] * 255))
+                                sceneState.updateObject(id: objectID) { $0.color = str }
+                            }
+                        ))
+                        .labelsHidden()
+                        .frame(width: 20)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 3) {
+                                ForEach(ManimObject.manimColors, id: \.self) { colorName in
+                                    Circle()
+                                        .fill(colorSwiftUI(colorName))
+                                        .frame(width: 16, height: 16)
+                                        .overlay(
+                                            Circle().stroke(
+                                                obj.color == colorName ? .white : .clear,
+                                                lineWidth: 2
+                                            )
                                         )
-                                    )
-                                    .onTapGesture {
-                                        sceneState.updateObject(id: objectID) { $0.color = colorName }
-                                    }
-                                    .help(colorName)
+                                        .onTapGesture {
+                                            sceneState.updateObject(id: objectID) { $0.color = colorName }
+                                        }
+                                        .help(colorName)
+                                }
                             }
                         }
                     }
@@ -387,5 +398,24 @@ struct NumField: View {
     
     private func commit() {
         if let v = Double(text) { onCommit(v) }
+    }
+}
+
+struct StringField: View {
+    let placeholder: String
+    let value: String
+    let onCommit: (String) -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+    
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.caption, design: .monospaced))
+            .focused($focused)
+            .onSubmit { onCommit(text) }
+            .onChange(of: focused) { _, f in if !f { onCommit(text) } }
+            .onAppear { text = value }
+            .onChange(of: value) { _, v in if !focused { text = v } }
     }
 }

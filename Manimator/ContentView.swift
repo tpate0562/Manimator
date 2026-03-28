@@ -209,6 +209,14 @@ struct ContentView: View {
                 .disabled(renderer.isRendering || sceneState.objects.isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
                 
+                Picker("", selection: $renderer.qualityFlag) {
+                    Text("Low").tag("-ql")
+                    Text("Med").tag("-qm")
+                    Text("High").tag("-qh")
+                }
+                .labelsHidden()
+                .frame(width: 80)
+                
                 if renderer.isRendering {
                     ProgressView()
                         .controlSize(.small)
