@@ -165,6 +165,122 @@ class ManimRenderer {
         }
     }
     
+    /// Export the given Manim code to a specific destination URL with custom quality.
+    func export(code: String, sceneName: String, width: Int, height: Int, fps: Int, destURL: URL) {
+        isRendering = true
+        errorMessage = nil
+        consoleOutput = ""
+        progress = "Exporting..."
+        videoURL = nil
+        
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Manimator_Export_\(UUID().uuidString)")
+        
+        do {
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        } catch {
+            self.errorMessage = "Failed to create temp directory: \(error.localizedDescription)"
+            self.isRendering = false
+            self.progress = "Error"
+            return
+        }
+        
+        let scriptURL = tempDir.appendingPathComponent("scene.py")
+        do {
+            try code.write(to: scriptURL, atomically: true, encoding: .utf8)
+        } catch {
+            self.errorMessage = "Failed to write script: \(error.localizedDescription)"
+            self.isRendering = false
+            self.progress = "Error"
+            return
+        }
+        
+        self.progress = "Rendering \(width)x\(height) @ \(fps)fps..."
+        
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            
+            let process = Process()
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            
+            process.executableURL = URL(fileURLWithPath: self.manimExecutablePath)
+            process.arguments = [
+                "--media_dir", tempDir.path,
+                "-r", "\(width),\(height)",
+                "--fps", "\(fps)",
+                scriptURL.path,
+                sceneName
+            ]
+            
+            var env = ProcessInfo.processInfo.environment
+            let extraPaths = [
+                "/opt/homebrew/bin",
+                "/opt/homebrew/sbin",
+                "/usr/local/bin",
+                "/Library/TeX/texbin",
+                "/usr/local/texlive/2024/bin/universal-darwin",
+            ].joined(separator: ":")
+            if let existingPath = env["PATH"] {
+                env["PATH"] = "\(extraPaths):\(existingPath)"
+            } else {
+                env["PATH"] = "\(extraPaths):/usr/bin:/bin:/usr/sbin:/sbin"
+            }
+            process.environment = env
+            process.currentDirectoryURL = tempDir
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+            
+            do { try process.run() } catch {
+                await MainActor.run {
+                    self.errorMessage = "Failed to launch Manim: \(error.localizedDescription)"
+                    self.isRendering = false
+                    self.progress = "Error"
+                }
+                return
+            }
+            
+            let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            
+            let exitCode = process.terminationStatus
+            let stdoutString = String(data: stdoutData, encoding: .utf8) ?? ""
+            let stderrString = String(data: stderrData, encoding: .utf8) ?? ""
+            let combined = "=== STDOUT ===\n\(stdoutString)\n\n=== STDERR ===\n\(stderrString)"
+            print(combined)
+            
+            await MainActor.run {
+                self.consoleOutput = combined
+                
+                if exitCode != 0 {
+                    self.errorMessage = "Manim exited with code \(exitCode).\n\(stderrString.prefix(500))"
+                    self.isRendering = false
+                    self.progress = "Export failed"
+                    return
+                }
+                
+                if let videoFile = self.findVideoFile(in: tempDir, sceneName: sceneName) {
+                    do {
+                        if FileManager.default.fileExists(atPath: destURL.path) {
+                            try FileManager.default.removeItem(at: destURL)
+                        }
+                        try FileManager.default.copyItem(at: videoFile, to: destURL)
+                        self.progress = "Export Done ✓"
+                    } catch {
+                        self.errorMessage = "Failed to save exported file to destination: \(error.localizedDescription)"
+                        self.progress = "Save failed"
+                    }
+                } else {
+                    self.errorMessage = "Export completed but video file not found in \(tempDir.path)"
+                    self.progress = "Video not found"
+                }
+                
+                self.isRendering = false
+            }
+        }
+    }
+    
     /// Search for the generated .mp4 video file in the media output directory.
     private func findVideoFile(in tempDir: URL, sceneName: String) -> URL? {
         let fm = FileManager.default

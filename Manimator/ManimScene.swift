@@ -32,6 +32,57 @@ struct ManimObject: Identifiable, Hashable, Codable {
     var xRangeMax: Double = 5.0
     var yRangeMin: Double = -3.0
     var yRangeMax: Double = 3.0
+    var graphWidth: Double = 10.0
+    var graphHeight: Double = 6.0
+    
+    enum CodingKeys: String, CodingKey {
+        case id, variableName, typeName, position, color, fillColor, scale, rotation, opacity, strokeWidth, text
+        case equation, xRangeMin, xRangeMax, yRangeMin, yRangeMax, graphWidth, graphHeight
+    }
+    
+    init(id: String, variableName: String, typeName: String, position: CGPoint = .zero, color: String = "WHITE", fillColor: String? = nil, scale: Double = 1.0, rotation: Double = 0.0, opacity: Double = 1.0, strokeWidth: Double = 2.0, text: String = "", equation: String = "np.sin(x)", xRangeMin: Double = -5.0, xRangeMax: Double = 5.0, yRangeMin: Double = -3.0, yRangeMax: Double = 3.0, graphWidth: Double = 10.0, graphHeight: Double = 6.0) {
+        self.id = id
+        self.variableName = variableName
+        self.typeName = typeName
+        self.position = position
+        self.color = color
+        self.fillColor = fillColor
+        self.scale = scale
+        self.rotation = rotation
+        self.opacity = opacity
+        self.strokeWidth = strokeWidth
+        self.text = text
+        self.equation = equation
+        self.xRangeMin = xRangeMin
+        self.xRangeMax = xRangeMax
+        self.yRangeMin = yRangeMin
+        self.yRangeMax = yRangeMax
+        self.graphWidth = graphWidth
+        self.graphHeight = graphHeight
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.variableName = try container.decode(String.self, forKey: .variableName)
+        self.typeName = try container.decode(String.self, forKey: .typeName)
+        self.position = try container.decodeIfPresent(CGPoint.self, forKey: .position) ?? .zero
+        self.color = try container.decodeIfPresent(String.self, forKey: .color) ?? "WHITE"
+        self.fillColor = try container.decodeIfPresent(String.self, forKey: .fillColor)
+        self.scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1.0
+        self.rotation = try container.decodeIfPresent(Double.self, forKey: .rotation) ?? 0.0
+        self.opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1.0
+        self.strokeWidth = try container.decodeIfPresent(Double.self, forKey: .strokeWidth) ?? 2.0
+        self.text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        
+        self.equation = try container.decodeIfPresent(String.self, forKey: .equation) ?? "np.sin(x)"
+        self.xRangeMin = try container.decodeIfPresent(Double.self, forKey: .xRangeMin) ?? -5.0
+        self.xRangeMax = try container.decodeIfPresent(Double.self, forKey: .xRangeMax) ?? 5.0
+        self.yRangeMin = try container.decodeIfPresent(Double.self, forKey: .yRangeMin) ?? -3.0
+        self.yRangeMax = try container.decodeIfPresent(Double.self, forKey: .yRangeMax) ?? 3.0
+        self.graphWidth = try container.decodeIfPresent(Double.self, forKey: .graphWidth) ?? 10.0
+        self.graphHeight = try container.decodeIfPresent(Double.self, forKey: .graphHeight) ?? 6.0
+    }
     
     // MARK: - Static Data
     
@@ -131,6 +182,29 @@ struct ManimAnimation: Identifiable, Hashable, Codable {
     var targetY: Double = 0.0
     var targetScale: Double = 1.0
     
+    init(targetObjectID: String, animationType: String, duration: Double = 1.0, targetX: Double = 0.0, targetY: Double = 0.0, targetScale: Double = 1.0) {
+        self.targetObjectID = targetObjectID
+        self.animationType = animationType
+        self.duration = duration
+        self.targetX = targetX
+        self.targetY = targetY
+        self.targetScale = targetScale
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case targetObjectID, animationType, duration, targetX, targetY, targetScale
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.targetObjectID = try container.decode(String.self, forKey: .targetObjectID)
+        self.animationType = try container.decode(String.self, forKey: .animationType)
+        self.duration = try container.decodeIfPresent(Double.self, forKey: .duration) ?? 1.0
+        self.targetX = try container.decodeIfPresent(Double.self, forKey: .targetX) ?? 0.0
+        self.targetY = try container.decodeIfPresent(Double.self, forKey: .targetY) ?? 0.0
+        self.targetScale = try container.decodeIfPresent(Double.self, forKey: .targetScale) ?? 1.0
+    }
+    
     static let types = [
         "Create", "FadeIn", "FadeOut", "Write",
         "DrawBorderThenFill", "GrowFromCenter",
@@ -149,6 +223,40 @@ struct TimelineStep: Identifiable, Codable {
     // If animations array is not empty, run_time applies to those concurrently.
     // If animations array is empty and waitTime > 0, it behaves like `self.wait(waitTime)`.
     var waitTime: Double = 1.0
+    
+    init(animations: [ManimAnimation] = [], waitTime: Double = 1.0) {
+        self.animations = animations
+        self.waitTime = waitTime
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case animations, waitTime
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.animations = try container.decodeIfPresent([ManimAnimation].self, forKey: .animations) ?? []
+        self.waitTime = try container.decodeIfPresent(Double.self, forKey: .waitTime) ?? 1.0
+    }
+}
+
+// MARK: - Aspect Ratio
+
+enum AspectRatioChoice: String, CaseIterable, Identifiable {
+    case sixteenByNine = "16:9"
+    case fourByThree = "4:3"
+    case custom = "Custom"
+    
+    var id: String { rawValue }
+    
+    /// Aspect ratio as width/height
+    var ratio: Double {
+        switch self {
+        case .sixteenByNine: return 16.0 / 9.0
+        case .fourByThree: return 4.0 / 3.0
+        case .custom: return 16.0 / 9.0   // fallback, overridden by custom values
+        }
+    }
 }
 
 // MARK: - Scene State (Source of Truth)
@@ -180,6 +288,33 @@ class SceneState {
     
     /// Counter for auto-naming objects
     var objectCounters: [String: Int] = [:]
+    
+    // MARK: - Aspect Ratio
+    
+    var aspectRatioChoice: AspectRatioChoice = .sixteenByNine
+    /// Custom width ratio component (only used when aspectRatioChoice == .custom)
+    var customRatioW: Double = 16.0
+    /// Custom height ratio component
+    var customRatioH: Double = 9.0
+    
+    /// The effective aspect ratio (width/height)
+    var effectiveAspectRatio: Double {
+        switch aspectRatioChoice {
+        case .sixteenByNine, .fourByThree:
+            return aspectRatioChoice.ratio
+        case .custom:
+            return customRatioH > 0 ? customRatioW / customRatioH : 16.0 / 9.0
+        }
+    }
+    
+    /// Manim Y range is always ±4 (FRAME_HEIGHT = 8)
+    var manimYRange: ClosedRange<Double> { -4.0...4.0 }
+    
+    /// Manim X range derived from aspect ratio: halfWidth = 4 * aspectRatio
+    var manimXRange: ClosedRange<Double> {
+        let halfW = 4.0 * effectiveAspectRatio
+        return -halfW...halfW
+    }
     
     init() {
         // Initialize with one empty wait step for convenience
@@ -399,6 +534,8 @@ class SceneState {
                     
                     lines.append("            x_range=[\(obj.xRangeMin), \(obj.xRangeMax), \(String(format: "%.1f", xInterval))],")
                     lines.append("            y_range=[\(obj.yRangeMin), \(obj.yRangeMax), \(String(format: "%.1f", yInterval))],")
+                    lines.append("            x_length=\(String(format: "%.1f", obj.graphWidth)),")
+                    lines.append("            y_length=\(String(format: "%.1f", obj.graphHeight))")
                     lines.append("        )")
                     lines.append("        \(graphVar) = \(axesVar).plot(lambda x: \(obj.equation), color=\(obj.color))")
                     lines.append("        \(obj.variableName) = VGroup(\(axesVar), \(graphVar))")

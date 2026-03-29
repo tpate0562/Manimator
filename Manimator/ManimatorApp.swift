@@ -57,6 +57,23 @@ struct ManimatorApp: App {
                 }
                 .keyboardShortcut("s", modifiers: .command)
             }
+            
+            CommandMenu("View") {
+                Menu("Aspect Ratio") {
+                    ForEach(AspectRatioChoice.allCases) { choice in
+                        Button {
+                            sceneState.aspectRatioChoice = choice
+                        } label: {
+                            HStack {
+                                Text(choice.rawValue)
+                                if sceneState.aspectRatioChoice == choice {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

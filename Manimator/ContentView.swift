@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showAddPanel = false
     @State private var showConsole = false
     @State private var showSettings = false
+    @State private var showExportPopover = false
     @State private var showObjectList = true
     @State private var showTimeline = true
     
@@ -31,7 +32,7 @@ struct ContentView: View {
                         Text("Canvas")
                             .font(.headline)
                         Spacer()
-                        Text("Manim Coordinates")
+                        Text(sceneState.aspectRatioChoice.rawValue)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -41,14 +42,20 @@ struct ContentView: View {
                     
                     Divider()
                     
-                    // Canvas + video overlay
+                    // Canvas + video overlay (locked to aspect ratio)
                     ZStack {
-                        DraggableOverlayView(sceneState: sceneState)
+                        Color.black  // letterbox background
                         
-                        // Video preview overlay (shown after render)
-                        if renderer.videoURL != nil {
-                            VideoPreviewOverlay(renderer: renderer)
+                        ZStack {
+                            DraggableOverlayView(sceneState: sceneState)
+                            
+                            // Video preview overlay (shown after render)
+                            if renderer.videoURL != nil {
+                                VideoPreviewOverlay(renderer: renderer)
+                            }
                         }
+                        .aspectRatio(sceneState.effectiveAspectRatio, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
                 .frame(minWidth: 400, idealWidth: 600)
@@ -217,6 +224,14 @@ struct ContentView: View {
                 .labelsHidden()
                 .frame(width: 80)
                 
+                Button("Export...") {
+                    showExportPopover = true
+                }
+                .buttonStyle(.bordered)
+                .popover(isPresented: $showExportPopover) {
+                    ExportPopover(renderer: renderer, sceneState: sceneState)
+                }
+                
                 if renderer.isRendering {
                     ProgressView()
                         .controlSize(.small)
@@ -351,6 +366,65 @@ struct SettingsPopover: View {
         }
         .padding()
         .frame(width: 320)
+    }
+}
+
+// MARK: - Export Popover
+
+struct ExportPopover: View {
+    @Bindable var renderer: ManimRenderer
+    @Bindable var sceneState: SceneState
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var width: Int = 1920
+    @State private var height: Int = 1080
+    @State private var fps: Int = 60
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Export Video")
+                .font(.headline)
+            
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Width")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("W", value: $width, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Height")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("H", value: $height, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("FPS")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("FPS", value: $fps, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            
+            Button("Save As...") {
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [.mpeg4Movie]
+                panel.nameFieldStringValue = "\(sceneState.sceneName).mp4"
+                
+                if panel.runModal() == .OK, let url = panel.url {
+                    sceneState.regenerateCode()
+                    renderer.export(code: sceneState.generatedCode, sceneName: sceneState.sceneName, width: width, height: height, fps: fps, destURL: url)
+                }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding()
+        .frame(width: 250)
     }
 }
 

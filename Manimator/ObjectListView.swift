@@ -61,25 +61,50 @@ struct ObjectListView: View {
                     VStack(spacing: 2) {
                         // Object list
                         ForEach(sceneState.objects) { obj in
-                            ObjectListRow(
-                                object: obj,
-                                isSelected: obj.id == sceneState.selectedObjectID,
-                                onSelect: { sceneState.selectedObjectID = obj.id },
-                                onDelete: { sceneState.deleteObject(id: obj.id) }
-                            )
-                        }
-                        
-                        Divider().padding(.vertical, 4)
-                        
-                        // Inspector for selected object
-                        if let selID = sceneState.selectedObjectID,
-                           let _ = sceneState.objects.first(where: { $0.id == selID }) {
-                            InspectorPanel(sceneState: sceneState, objectID: selID)
-                        } else {
-                            Text("Select an object to inspect")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                                .padding()
+                            DisclosureGroup(
+                                isExpanded: Binding(
+                                    get: { sceneState.selectedObjectID == obj.id },
+                                    set: { isExpanded in
+                                        if isExpanded { sceneState.selectedObjectID = obj.id }
+                                        else if sceneState.selectedObjectID == obj.id { sceneState.selectedObjectID = nil }
+                                    }
+                                )
+                            ) {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    InspectorPanel(sceneState: sceneState, objectID: obj.id)
+                                    
+                                    Button(action: {
+                                        sceneState.duplicateObject(id: obj.id)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "doc.on.doc")
+                                            Text("Duplicate Object")
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .padding(.horizontal, 12)
+                                    .padding(.bottom, 12)
+                                }
+                                .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+                                .cornerRadius(8)
+                                .padding(.vertical, 4)
+                            } label: {
+                                ObjectListRow(
+                                    object: obj,
+                                    isSelected: obj.id == sceneState.selectedObjectID,
+                                    onSelect: {
+                                        if sceneState.selectedObjectID == obj.id {
+                                            sceneState.selectedObjectID = nil
+                                        } else {
+                                            sceneState.selectedObjectID = obj.id
+                                        }
+                                    },
+                                    onDelete: { sceneState.deleteObject(id: obj.id) }
+                                )
+                            }
+                            .tint(.secondary)
+                            .padding(.horizontal, 8)
                         }
                     }
                     .padding(.vertical, 4)
@@ -190,9 +215,36 @@ struct InspectorPanel: View {
                 // Graph content (for FunctionGraph)
                 if obj.isGraphType {
                     InspectorRow(label: "Equation (f(x))") {
-                        StringField(placeholder: "np.sin(x)", value: obj.equation) { newVal in
-                            if newVal != obj.equation {
-                                sceneState.updateObject(id: objectID) { $0.equation = newVal }
+                        VStack(alignment: .leading, spacing: 6) {
+                            StringField(placeholder: "np.sin(x)", value: obj.equation) { newVal in
+                                if newVal != obj.equation {
+                                    sceneState.updateObject(id: objectID) { $0.equation = newVal }
+                                }
+                            }
+                            
+                            // Math Helper Chips
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    MathChip(label: "sin", insert: "np.sin(x)", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "cos", insert: "np.cos(x)", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "tan", insert: "np.tan(x)", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "x²", insert: "x**2", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "x³", insert: "x**3", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "eˣ", insert: "np.exp(x)", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "√x", insert: "np.sqrt(x)", objectID: objectID, sceneState: sceneState)
+                                    MathChip(label: "log", insert: "np.log(x)", objectID: objectID, sceneState: sceneState)
+                                }
+                            }
+                        }
+                    }
+                    
+                    InspectorRow(label: "Dimensions") {
+                        HStack(spacing: 6) {
+                            NumField(label: "Width", value: obj.graphWidth) { v in
+                                sceneState.updateObject(id: objectID) { $0.graphWidth = max(0.1, v) }
+                            }
+                            NumField(label: "Height", value: obj.graphHeight) { v in
+                                sceneState.updateObject(id: objectID) { $0.graphHeight = max(0.1, v) }
                             }
                         }
                     }
@@ -425,5 +477,29 @@ struct StringField: View {
             .onChange(of: focused) { _, f in if !f { onCommit(text) } }
             .onAppear { text = value }
             .onChange(of: value) { _, v in if !focused { text = v } }
+    }
+}
+
+// MARK: - Math Chip Helper
+
+struct MathChip: View {
+    let label: String
+    let insert: String
+    let objectID: String
+    let sceneState: SceneState
+    
+    var body: some View {
+        Button(action: {
+            sceneState.updateObject(id: objectID) { $0.equation = insert }
+        }) {
+            Text(label)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.2))
+                .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
     }
 }

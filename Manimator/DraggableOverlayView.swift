@@ -11,8 +11,8 @@ import SwiftUI
 struct DraggableOverlayView: View {
     @Bindable var sceneState: SceneState
     
-    private let manimXRange: ClosedRange<Double> = -7.1...7.1
-    private let manimYRange: ClosedRange<Double> = -4.0...4.0
+    private var manimXRange: ClosedRange<Double> { sceneState.manimXRange }
+    private var manimYRange: ClosedRange<Double> { sceneState.manimYRange }
     
     @State private var draggedObjectID: String? = nil
     @State private var dragCurrentScreenPos: CGPoint = .zero
@@ -38,7 +38,7 @@ struct DraggableOverlayView: View {
                         : manimToScreen(object.position, in: geo.size)
                     let isSelected = object.id == sceneState.selectedObjectID
                     
-                    ObjectVisual(object: object, isSelected: isSelected, isDragging: isDragging, canvasSize: geo.size)
+                    ObjectVisual(object: object, isSelected: isSelected, isDragging: isDragging, canvasSize: geo.size, manimXRange: manimXRange, manimYRange: manimYRange)
                         .position(screenPos)
                         .gesture(
                             DragGesture(minimumDistance: 2, coordinateSpace: .named("canvas"))
@@ -175,75 +175,146 @@ struct CanvasGrid: View {
     }
 }
 
-// MARK: - Object Visual (type-aware rendering)
+// MARK: - Object Visual (type-aware rendering at TRUE Manim size)
 
 struct ObjectVisual: View {
     let object: ManimObject
     let isSelected: Bool
     let isDragging: Bool
     let canvasSize: CGSize
+    let manimXRange: ClosedRange<Double>
+    let manimYRange: ClosedRange<Double>
     
-    private var baseSize: CGFloat {
-        let unit = min(canvasSize.width / 14.2, canvasSize.height / 8.0)
-        return unit * object.scale
+    /// Pixels per 1 manim unit on each axis
+    private var unitX: CGFloat {
+        canvasSize.width / (manimXRange.upperBound - manimXRange.lowerBound)
+    }
+    private var unitY: CGFloat {
+        canvasSize.height / (manimYRange.upperBound - manimYRange.lowerBound)
+    }
+    /// Average unit size (used for shapes that are equal on both axes)
+    private var unit: CGFloat { min(unitX, unitY) }
+    
+    // ── True Manim default sizes (in manim units) ──
+    // Circle:        radius = 1  → diameter = 2
+    // Square:        side   = 2
+    // Rectangle:     width  = 4, height = 2
+    // Triangle:      fits in a circle of radius ~1 → bounding ≈ 2
+    // RegularPolygon: radius ~1
+    // Ellipse:       width ~ 2, height ~ 1
+    // Star:          outer radius ~1
+    // Dot:           radius = 0.08 (DEFAULT_DOT_RADIUS) → diameter = 0.16
+    // Line/Arrow:    default length = 2 (LEFT to RIGHT)
+    // Annulus:       outer radius 1, inner radius 0.5
+    // Arc:           radius 1
+    
+    /// Width of the shape **in screen pixels**, before user scale
+    private var manimShapeWidth: CGFloat {
+        switch object.typeName {
+        case "Circle", "Annulus", "Arc":       return 2.0 * unit   // diameter
+        case "Dot":                             return 0.16 * unit  // tiny dot
+        case "Square":                          return 2.0 * unit
+        case "Rectangle":                       return 4.0 * unit
+        case "Triangle":                        return 2.0 * unit
+        case "RegularPolygon", "Polygon":       return 2.0 * unit
+        case "Ellipse":                         return 2.0 * unit
+        case "Star":                            return 2.0 * unit
+        case "Line", "DashedLine":              return 2.0 * unit
+        case "Arrow", "DoubleArrow":            return 2.0 * unit
+        default:                                return 2.0 * unit
+        }
+    }
+    
+    /// Height of the shape **in screen pixels**, before user scale
+    private var manimShapeHeight: CGFloat {
+        switch object.typeName {
+        case "Circle", "Annulus", "Arc":       return 2.0 * unit
+        case "Dot":                             return 0.16 * unit
+        case "Square":                          return 2.0 * unit
+        case "Rectangle":                       return 2.0 * unit
+        case "Triangle":                        return 2.0 * unit
+        case "RegularPolygon", "Polygon":       return 2.0 * unit
+        case "Ellipse":                         return 1.0 * unit
+        case "Star":                            return 2.0 * unit
+        case "Line", "DashedLine":              return max(2, object.strokeWidth)
+        case "Arrow", "DoubleArrow":            return max(10, object.strokeWidth * 2)
+        default:                                return 2.0 * unit
+        }
+    }
+    
+    /// Final width after applying user scale
+    private var shapeWidth: CGFloat  { manimShapeWidth * object.scale }
+    /// Final height after applying user scale
+    private var shapeHeight: CGFloat { manimShapeHeight * object.scale }
+    
+    private var isCircular: Bool {
+        ["Circle", "Dot", "Annulus", "Arc"].contains(object.typeName)
+    }
+    
+    /// Whether this object type is rendered via Manim preview
+    private var isRenderedType: Bool {
+        ["Tex", "MathTex", "FunctionGraph"].contains(object.typeName)
+    }
+    
+    /// For rendered types, read display size from the preview cache
+    private var renderedDisplayWidth: CGFloat {
+        guard let p = ManimPreviewCache.shared.preview(for: object) else { return unit * 2 * object.scale }
+        return CGFloat(p.manimWidth) * unit * object.scale
+    }
+    private var renderedDisplayHeight: CGFloat {
+        guard let p = ManimPreviewCache.shared.preview(for: object) else { return unit * 1 * object.scale }
+        return CGFloat(p.manimHeight) * unit * object.scale
+    }
+    
+    /// Effective height for label offset (uses rendered size for rendered types)
+    private var effectiveHeight: CGFloat {
+        isRenderedType ? renderedDisplayHeight : shapeHeight
+    }
+    private var effectiveWidth: CGFloat {
+        isRenderedType ? renderedDisplayWidth : shapeWidth
     }
     
     var body: some View {
         ZStack {
             // Selection ring
             if isSelected {
-                RoundedRectangle(cornerRadius: isCircular ? shapeWidth / 2 : 4)
+                RoundedRectangle(cornerRadius: isCircular ? effectiveWidth / 2 : 4)
                     .stroke(Color.yellow, lineWidth: 2)
-                    .frame(width: shapeWidth + 10, height: shapeHeight + 10)
+                    .frame(width: effectiveWidth + 8, height: effectiveHeight + 8)
                     .opacity(0.7)
             }
             
             // Main shape
-            shapeView
-                .frame(width: shapeWidth, height: shapeHeight)
-                .foregroundStyle(object.swiftUIColor.opacity(object.opacity))
-                .rotationEffect(.degrees(object.rotation))
+            if isRenderedType {
+                shapeView
+                    .rotationEffect(.degrees(object.rotation))
+            } else {
+                shapeView
+                    .frame(width: shapeWidth, height: shapeHeight)
+                    .foregroundStyle(object.swiftUIColor.opacity(object.opacity))
+                    .rotationEffect(.degrees(object.rotation))
+            }
             
-            // Label
+            // Variable-name label
             Text(object.variableName)
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundColor(.white)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Color.black.opacity(0.7)))
-                .offset(y: shapeHeight / 2 + 12)
+                .offset(y: effectiveHeight / 2 + 12)
         }
-        .scaleEffect(isDragging ? 1.1 : 1.0)
+        .scaleEffect(isDragging ? 1.05 : 1.0)
         .shadow(color: .black.opacity(isDragging ? 0.6 : 0.3), radius: isDragging ? 8 : 4)
         .animation(.easeOut(duration: 0.12), value: isDragging)
-    }
-    
-    private var isCircular: Bool {
-        ["Circle", "Dot", "Annulus", "Arc"].contains(object.typeName)
-    }
-    
-    private var shapeWidth: CGFloat {
-        switch object.typeName {
-        case "Rectangle": return baseSize * 1.6
-        case "Line", "Arrow", "DoubleArrow", "DashedLine": return baseSize * 2
-        case "Ellipse": return baseSize * 1.4
-        default: return baseSize
-        }
-    }
-    
-    private var shapeHeight: CGFloat {
-        switch object.typeName {
-        case "Rectangle": return baseSize
-        case "Line", "Arrow", "DoubleArrow", "DashedLine": return 4
-        case "Ellipse": return baseSize * 0.8
-        default: return baseSize
-        }
     }
     
     @ViewBuilder
     private var shapeView: some View {
         switch object.typeName {
-        case "Circle", "Annulus", "Arc", "Dot":
+        case "Circle", "Annulus", "Arc":
+            Circle()
+        case "Dot":
             Circle()
         case "Square":
             RoundedRectangle(cornerRadius: 2)
@@ -258,14 +329,96 @@ struct ObjectVisual: View {
         case "Star":
             StarShape()
         case "Line", "DashedLine":
-            Rectangle()
+            LineShapeView(isDashed: object.typeName == "DashedLine", strokeWidth: object.strokeWidth)
         case "Arrow", "DoubleArrow":
             ArrowShape()
-        case "Text", "Tex", "MathTex":
-            TextObjectView(text: object.text, color: object.swiftUIColor)
+        case "Text":
+            TextObjectView(text: object.text, color: object.swiftUIColor, manimUnit: unit, userScale: object.scale)
+        case "Tex", "MathTex", "FunctionGraph":
+            RenderedPreviewView(object: object, unit: unit)
         default:
             Circle()
         }
+    }
+}
+
+/// A proper line shape with optional dashing, rendered as a path
+struct LineShapeView: View {
+    let isDashed: Bool
+    let strokeWidth: CGFloat
+    
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: geo.size.height / 2))
+                path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height / 2))
+            }
+            .stroke(style: StrokeStyle(lineWidth: strokeWidth, dash: isDashed ? [6, 4] : []))
+        }
+    }
+}
+
+// MARK: - Manim-Rendered Preview (Tex, MathTex, FunctionGraph)
+
+struct RenderedPreviewView: View {
+    let object: ManimObject
+    let unit: CGFloat        // pixels per manim unit
+    
+    private var cache: ManimPreviewCache { .shared }
+    
+    private var preview: PreviewResult? {
+        cache.preview(for: object)
+    }
+    
+    private var displayWidth: CGFloat {
+        guard let p = preview else { return unit * 2 * object.scale }
+        return CGFloat(p.manimWidth) * unit * object.scale
+    }
+    private var displayHeight: CGFloat {
+        guard let p = preview else { return unit * 1 * object.scale }
+        return CGFloat(p.manimHeight) * unit * object.scale
+    }
+    
+    var body: some View {
+        Group {
+            if let p = preview {
+                Image(nsImage: p.image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: displayWidth, height: displayHeight)
+            } else if cache.isRendering(for: object) {
+                renderingPlaceholder
+            } else {
+                renderingPlaceholder
+                    .onAppear {
+                        cache.requestRender(for: object)
+                    }
+            }
+        }
+        .onChange(of: cache.cacheKey(for: object)) { _, newKey in
+            // When object properties change, invalidate and re-render
+            if cache.preview(for: object) == nil {
+                cache.requestRender(for: object)
+            }
+        }
+    }
+    
+    private var renderingPlaceholder: some View {
+        VStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+            Text("Rendering...")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .frame(width: unit * 2, height: unit * 0.8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.05))
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
@@ -334,16 +487,24 @@ struct ArrowShape: Shape {
 struct TextObjectView: View {
     let text: String
     let color: Color
+    var manimUnit: CGFloat = 50
+    var userScale: Double = 1.0
+    
+    /// Manim's default text renders at roughly 0.5 manim units tall for the font.
+    /// We approximate this so the text feels proportional.
+    private var fontSize: CGFloat {
+        // Manim default text height ≈ 0.5 units; scale by user's scale()
+        let base = manimUnit * 0.48 * userScale
+        return max(8, min(base, 120))   // clamp to readable range
+    }
     
     var body: some View {
         Text(text.isEmpty ? "Text" : text)
-            .font(.system(size: 14, weight: .medium))
+            .font(.system(size: fontSize, weight: .medium))
             .foregroundColor(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.black.opacity(0.3))
-            )
+            .lineLimit(nil)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
     }
 }
