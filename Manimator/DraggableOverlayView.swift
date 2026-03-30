@@ -385,7 +385,6 @@ struct RenderedPreviewView: View {
                 Image(nsImage: p.image)
                     .resizable()
                     .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
                     .frame(width: displayWidth, height: displayHeight)
             } else if cache.isRendering(for: object) {
                 renderingPlaceholder
@@ -493,9 +492,9 @@ struct TextObjectView: View {
     /// Manim's default text renders at roughly 0.5 manim units tall for the font.
     /// We approximate this so the text feels proportional.
     private var fontSize: CGFloat {
-        // Manim default text height ≈ 0.5 units; scale by user's scale()
-        let base = manimUnit * 0.48 * userScale
-        return max(8, min(base, 120))   // clamp to readable range
+        // Manim default text height ≈ 0.6 units; scale by user's scale()
+        let base = manimUnit * userScale
+        return max(8, min(base, 200))   // clamp to readable range
     }
     
     var body: some View {

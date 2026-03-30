@@ -42,6 +42,11 @@ struct AddObjectPanel: View {
                     ObjectCategory(title: "Graphs", icon: "chart.xyaxis.line") {
                         ObjectGrid(types: ManimObject.graphTypes, sceneState: sceneState, dismiss: dismiss)
                     }
+                    
+                    // Numbers
+                    ObjectCategory(title: "Numbers", icon: "number") {
+                        ObjectGrid(types: ManimObject.numberTypes, sceneState: sceneState, dismiss: dismiss)
+                    }
                 }
                 .padding(16)
             }
@@ -135,6 +140,7 @@ struct ObjectGrid: View {
         case "doublearrow": return "arrow.left.arrow.right"
         case "text", "tex", "mathtex": return "textformat"
         case "functiongraph": return "chart.xyaxis.line"
+        case "decimalnumber", "integer": return "number"
         default: return "cube"
         }
     }

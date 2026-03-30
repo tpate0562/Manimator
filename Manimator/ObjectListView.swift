@@ -212,6 +212,21 @@ struct InspectorPanel: View {
                     }
                 }
                 
+                // Numeric value (for DecimalNumber / Integer)
+                if obj.isNumberType {
+                    InspectorRow(label: "Value") {
+                        HStack(spacing: 6) {
+                            NumField(label: "", value: Double(obj.text) ?? 0.0) { v in
+                                if obj.typeName == "Integer" {
+                                    sceneState.updateObject(id: objectID) { $0.text = "\(Int(v))" }
+                                } else {
+                                    sceneState.updateObject(id: objectID) { $0.text = String(format: "%.2f", v) }
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 // Graph content (for FunctionGraph)
                 if obj.isGraphType {
                     InspectorRow(label: "Equation (f(x))") {

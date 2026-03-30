@@ -104,7 +104,11 @@ struct ManimObject: Identifiable, Hashable, Codable {
         "FunctionGraph"
     ]
     
-    static var allTypes: [String] { shapeTypes + lineTypes + textTypes + graphTypes }
+    static let numberTypes = [
+        "DecimalNumber", "Integer",
+    ]
+    
+    static var allTypes: [String] { shapeTypes + lineTypes + textTypes + graphTypes + numberTypes }
     
     static let manimColors = [
         "WHITE", "GRAY", "BLACK",
@@ -134,6 +138,7 @@ struct ManimObject: Identifiable, Hashable, Codable {
         case "doublearrow": return "arrow.left.arrow.right"
         case "text", "tex", "mathtex": return "textformat"
         case "functiongraph": return "chart.xyaxis.line"
+        case "decimalnumber", "integer": return "number"
         default: return "cube"
         }
     }
@@ -167,9 +172,16 @@ struct ManimObject: Identifiable, Hashable, Codable {
     var isTextType: Bool { Self.textTypes.contains(typeName) }
     var isLineType: Bool { Self.lineTypes.contains(typeName) }
     var isGraphType: Bool { Self.graphTypes.contains(typeName) }
+    var isNumberType: Bool { Self.numberTypes.contains(typeName) }
 }
 
 // MARK: - Animation Timeline Models
+
+struct AnimationCategory: Hashable {
+    let name: String
+    let icon: String
+    let types: [String]
+}
 
 struct ManimAnimation: Identifiable, Hashable, Codable {
     let id = UUID()
@@ -177,52 +189,131 @@ struct ManimAnimation: Identifiable, Hashable, Codable {
     var animationType: String
     var duration: Double = 1.0
     
-    // For MoveTo animations
+    // MoveTo parameters
     var targetX: Double = 0.0
     var targetY: Double = 0.0
     var targetScale: Double = 1.0
     
-    init(targetObjectID: String, animationType: String, duration: Double = 1.0, targetX: Double = 0.0, targetY: Double = 0.0, targetScale: Double = 1.0) {
+    // Indication parameters
+    var indicateColor: String? = nil
+    var indicateScaleFactor: Double = 1.2
+    var flashRadius: Double = 0.3
+    var flashNumLines: Int = 12
+    var circumscribeShape: String = "Rectangle"
+    var focusOnOpacity: Double = 0.2
+    var waveAmplitude: Double = 0.2
+    var waveDirection: String = "UP"
+    var wiggleScaleValue: Double = 1.1
+    var wiggleCount: Int = 6
+    
+    // Creation / Removal parameters
+    var shiftDirection: String? = nil
+    var fadeScale: Double = 1.0
+    var growEdge: String = "DOWN"
+    
+    // Transform parameters
+    var rotationAngle: Double = 180.0
+    var transformTargetID: String? = nil
+    
+    // Numbers parameters
+    var changeValue: Double = 0.0
+    
+    // Rate function
+    var rateFunc: String = "smooth"
+    
+    // MARK: - Categories
+    
+    static let categories: [AnimationCategory] = [
+        AnimationCategory(name: "Creation", icon: "sparkles", types: [
+            "Create", "FadeIn", "Write", "DrawBorderThenFill",
+            "GrowFromCenter", "GrowFromEdge", "SpinInFromNothing",
+            "FadeOut", "Uncreate", "ShrinkToCenter"
+        ]),
+        AnimationCategory(name: "Indication", icon: "hand.point.up.left.fill", types: [
+            "Indicate", "Flash", "Circumscribe", "FocusOn", "ApplyWave", "Wiggle"
+        ]),
+        AnimationCategory(name: "Transform", icon: "arrow.triangle.2.circlepath", types: [
+            "MoveTo", "Rotate", "Transform", "ReplacementTransform"
+        ]),
+        AnimationCategory(name: "Composition", icon: "square.stack.3d.up", types: []),
+        AnimationCategory(name: "Numbers", icon: "number", types: [
+            "ChangeDecimalToValue"
+        ]),
+    ]
+    
+    static let types: [String] = categories.flatMap { $0.types }
+    
+    static let rateFunctions = [
+        "smooth", "linear", "rush_into", "rush_from",
+        "there_and_back", "double_smooth", "running_start"
+    ]
+    
+    static let directionOptions = ["UP", "DOWN", "LEFT", "RIGHT"]
+    static let edgeOptions = ["UP", "DOWN", "LEFT", "RIGHT"]
+    static let shapeOptions = ["Rectangle", "Circle"]
+    
+    static func category(for type: String) -> String {
+        for cat in categories where cat.types.contains(type) {
+            return cat.name
+        }
+        return "Creation"
+    }
+    
+    // MARK: - Codable
+    
+    enum CodingKeys: String, CodingKey {
+        case targetObjectID, animationType, duration
+        case targetX, targetY, targetScale
+        case indicateColor, indicateScaleFactor
+        case flashRadius, flashNumLines
+        case circumscribeShape, focusOnOpacity
+        case waveAmplitude, waveDirection
+        case wiggleScaleValue, wiggleCount
+        case shiftDirection, fadeScale, growEdge
+        case rotationAngle, transformTargetID
+        case changeValue, rateFunc
+    }
+    
+    init(targetObjectID: String, animationType: String, duration: Double = 1.0) {
         self.targetObjectID = targetObjectID
         self.animationType = animationType
         self.duration = duration
-        self.targetX = targetX
-        self.targetY = targetY
-        self.targetScale = targetScale
-    }
-    
-    enum CodingKeys: String, CodingKey {
-        case targetObjectID, animationType, duration, targetX, targetY, targetScale
     }
     
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.targetObjectID = try container.decode(String.self, forKey: .targetObjectID)
-        self.animationType = try container.decode(String.self, forKey: .animationType)
-        self.duration = try container.decodeIfPresent(Double.self, forKey: .duration) ?? 1.0
-        self.targetX = try container.decodeIfPresent(Double.self, forKey: .targetX) ?? 0.0
-        self.targetY = try container.decodeIfPresent(Double.self, forKey: .targetY) ?? 0.0
-        self.targetScale = try container.decodeIfPresent(Double.self, forKey: .targetScale) ?? 1.0
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.targetObjectID = try c.decode(String.self, forKey: .targetObjectID)
+        self.animationType = try c.decode(String.self, forKey: .animationType)
+        self.duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? 1.0
+        self.targetX = try c.decodeIfPresent(Double.self, forKey: .targetX) ?? 0.0
+        self.targetY = try c.decodeIfPresent(Double.self, forKey: .targetY) ?? 0.0
+        self.targetScale = try c.decodeIfPresent(Double.self, forKey: .targetScale) ?? 1.0
+        self.indicateColor = try c.decodeIfPresent(String.self, forKey: .indicateColor)
+        self.indicateScaleFactor = try c.decodeIfPresent(Double.self, forKey: .indicateScaleFactor) ?? 1.2
+        self.flashRadius = try c.decodeIfPresent(Double.self, forKey: .flashRadius) ?? 0.3
+        self.flashNumLines = try c.decodeIfPresent(Int.self, forKey: .flashNumLines) ?? 12
+        self.circumscribeShape = try c.decodeIfPresent(String.self, forKey: .circumscribeShape) ?? "Rectangle"
+        self.focusOnOpacity = try c.decodeIfPresent(Double.self, forKey: .focusOnOpacity) ?? 0.2
+        self.waveAmplitude = try c.decodeIfPresent(Double.self, forKey: .waveAmplitude) ?? 0.2
+        self.waveDirection = try c.decodeIfPresent(String.self, forKey: .waveDirection) ?? "UP"
+        self.wiggleScaleValue = try c.decodeIfPresent(Double.self, forKey: .wiggleScaleValue) ?? 1.1
+        self.wiggleCount = try c.decodeIfPresent(Int.self, forKey: .wiggleCount) ?? 6
+        self.shiftDirection = try c.decodeIfPresent(String.self, forKey: .shiftDirection)
+        self.fadeScale = try c.decodeIfPresent(Double.self, forKey: .fadeScale) ?? 1.0
+        self.growEdge = try c.decodeIfPresent(String.self, forKey: .growEdge) ?? "DOWN"
+        self.rotationAngle = try c.decodeIfPresent(Double.self, forKey: .rotationAngle) ?? 180.0
+        self.transformTargetID = try c.decodeIfPresent(String.self, forKey: .transformTargetID)
+        self.changeValue = try c.decodeIfPresent(Double.self, forKey: .changeValue) ?? 0.0
+        self.rateFunc = try c.decodeIfPresent(String.self, forKey: .rateFunc) ?? "smooth"
     }
-    
-    static let types = [
-        "Create", "FadeIn", "FadeOut", "Write",
-        "DrawBorderThenFill", "GrowFromCenter",
-        "GrowFromEdge", "SpinInFromNothing",
-        "ShrinkToCenter", "Indicate",
-        "Flash", "Wiggle", "ApplyWave", "Uncreate",
-        "MoveTo"
-    ]
 }
 
 struct TimelineStep: Identifiable, Codable {
     let id = UUID()
     var animations: [ManimAnimation] = []
-    
-    // Custom wait time if not animating anything, or to add delay.
-    // If animations array is not empty, run_time applies to those concurrently.
-    // If animations array is empty and waitTime > 0, it behaves like `self.wait(waitTime)`.
     var waitTime: Double = 1.0
+    var playMode: String = "parallel"  // "parallel", "lagged", "sequential"
+    var lagRatio: Double = 0.5
     
     init(animations: [ManimAnimation] = [], waitTime: Double = 1.0) {
         self.animations = animations
@@ -230,13 +321,15 @@ struct TimelineStep: Identifiable, Codable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case animations, waitTime
+        case animations, waitTime, playMode, lagRatio
     }
     
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.animations = try container.decodeIfPresent([ManimAnimation].self, forKey: .animations) ?? []
-        self.waitTime = try container.decodeIfPresent(Double.self, forKey: .waitTime) ?? 1.0
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.animations = try c.decodeIfPresent([ManimAnimation].self, forKey: .animations) ?? []
+        self.waitTime = try c.decodeIfPresent(Double.self, forKey: .waitTime) ?? 1.0
+        self.playMode = try c.decodeIfPresent(String.self, forKey: .playMode) ?? "parallel"
+        self.lagRatio = try c.decodeIfPresent(Double.self, forKey: .lagRatio) ?? 0.5
     }
 }
 
@@ -382,6 +475,10 @@ class SceneState {
         if ManimObject.graphTypes.contains(type) {
             obj.color = "GREEN"
         }
+        if ManimObject.numberTypes.contains(type) {
+            obj.text = "0"  // initial numeric value
+            obj.color = "WHITE"
+        }
         
         objects.append(obj)
         selectedObjectID = varName
@@ -457,10 +554,18 @@ class SceneState {
     func duplicateTimelineStep(id: UUID) {
         guard let idx = timeline.firstIndex(where: { $0.id == id }) else { return }
         var copy = timeline[idx]
-        copy.animations = copy.animations.map {
-            var anim = $0
-            // Generates new UUIDs for the animations inside the step automatically because ManimAnimation is a struct, wait, no, ManimAnimation has a `let id = UUID()`. So a simple copy keeps the old UUIDs which violates Identifiable. Let's make a fresh ManimAnimation for each.
-            return ManimAnimation(targetObjectID: anim.targetObjectID, animationType: anim.animationType, duration: anim.duration, targetX: anim.targetX, targetY: anim.targetY, targetScale: anim.targetScale)
+        copy.animations = copy.animations.map { src in
+            var a = ManimAnimation(targetObjectID: src.targetObjectID, animationType: src.animationType, duration: src.duration)
+            a.targetX = src.targetX; a.targetY = src.targetY; a.targetScale = src.targetScale
+            a.indicateColor = src.indicateColor; a.indicateScaleFactor = src.indicateScaleFactor
+            a.flashRadius = src.flashRadius; a.flashNumLines = src.flashNumLines
+            a.circumscribeShape = src.circumscribeShape; a.focusOnOpacity = src.focusOnOpacity
+            a.waveAmplitude = src.waveAmplitude; a.waveDirection = src.waveDirection
+            a.wiggleScaleValue = src.wiggleScaleValue; a.wiggleCount = src.wiggleCount
+            a.shiftDirection = src.shiftDirection; a.fadeScale = src.fadeScale; a.growEdge = src.growEdge
+            a.rotationAngle = src.rotationAngle; a.transformTargetID = src.transformTargetID
+            a.changeValue = src.changeValue; a.rateFunc = src.rateFunc
+            return a
         }
         timeline.insert(copy, at: idx + 1)
         selectedStepID = copy.id
@@ -589,29 +694,126 @@ class SceneState {
                 if step.animations.isEmpty {
                     lines.append("        self.wait(\(String(format: "%.1f", step.waitTime)))")
                 } else {
-                    // Group animations with the same duration for simplicity, or just play them all with the max run_time
-                    // A proper manim self.play accepts multiple objects. If they have different run_times, it's slightly trickier in one call.
-                    // We'll write one self.play() and apply the max run_time across all animations in the step.
                     let maxDuration = step.animations.map { $0.duration }.max() ?? 1.0
                     var animStrings: [String] = []
+                    
                     for anim in step.animations {
-                        // Check if object exists
-                        if objects.contains(where: { $0.id == anim.targetObjectID }) {
-                            if anim.animationType == "MoveTo" {
-                                var moveCmd = "\(anim.targetObjectID).animate.move_to([\(String(format: "%.2f", anim.targetX)), \(String(format: "%.2f", anim.targetY)), 0])"
-                                if abs(anim.targetScale - 1.0) > 0.01 {
-                                    moveCmd += ".scale(\(String(format: "%.2f", anim.targetScale)))"
-                                }
-                                animStrings.append(moveCmd)
-                            } else {
-                                animStrings.append("\(anim.animationType)(\(anim.targetObjectID))")
+                        guard objects.contains(where: { $0.id == anim.targetObjectID }) else { continue }
+                        let obj = anim.targetObjectID
+                        let f = { (v: Double) in String(format: "%.2f", v) }
+                        var animStr = ""
+                        
+                        switch anim.animationType {
+                        // --- Creation / Removal (no extra params) ---
+                        case "Create", "Write", "DrawBorderThenFill", "GrowFromCenter",
+                             "SpinInFromNothing", "Uncreate", "ShrinkToCenter":
+                            animStr = "\(anim.animationType)(\(obj))"
+                            
+                        case "FadeIn":
+                            var args = [obj]
+                            if let dir = anim.shiftDirection { args.append("shift=\(dir)") }
+                            if abs(anim.fadeScale - 1.0) > 0.01 { args.append("scale=\(f(anim.fadeScale))") }
+                            animStr = "FadeIn(\(args.joined(separator: ", ")))"
+                            
+                        case "FadeOut":
+                            var args = [obj]
+                            if let dir = anim.shiftDirection { args.append("shift=\(dir)") }
+                            if abs(anim.fadeScale - 1.0) > 0.01 { args.append("scale=\(f(anim.fadeScale))") }
+                            animStr = "FadeOut(\(args.joined(separator: ", ")))"
+                            
+                        case "GrowFromEdge":
+                            animStr = "GrowFromEdge(\(obj), edge=\(anim.growEdge))"
+                            
+                        // --- Indication ---
+                        case "Indicate":
+                            var args = [obj]
+                            if let c = anim.indicateColor { args.append("color=\(c)") }
+                            if abs(anim.indicateScaleFactor - 1.2) > 0.01 { args.append("scale_factor=\(f(anim.indicateScaleFactor))") }
+                            animStr = "Indicate(\(args.joined(separator: ", ")))"
+                            
+                        case "Flash":
+                            var args = [obj]
+                            if let c = anim.indicateColor { args.append("color=\(c)") }
+                            if abs(anim.flashRadius - 0.3) > 0.01 { args.append("flash_radius=\(f(anim.flashRadius))") }
+                            if anim.flashNumLines != 12 { args.append("num_lines=\(anim.flashNumLines)") }
+                            animStr = "Flash(\(args.joined(separator: ", ")))"
+                            
+                        case "Circumscribe":
+                            var args = [obj]
+                            if let c = anim.indicateColor { args.append("color=\(c)") }
+                            if anim.circumscribeShape != "Rectangle" { args.append("shape=\(anim.circumscribeShape)") }
+                            animStr = "Circumscribe(\(args.joined(separator: ", ")))"
+                            
+                        case "FocusOn":
+                            var args = [obj]
+                            if let c = anim.indicateColor { args.append("color=\(c)") }
+                            if abs(anim.focusOnOpacity - 0.2) > 0.01 { args.append("opacity=\(f(anim.focusOnOpacity))") }
+                            animStr = "FocusOn(\(args.joined(separator: ", ")))"
+                            
+                        case "ApplyWave":
+                            var args = [obj]
+                            if anim.waveDirection != "UP" { args.append("direction=\(anim.waveDirection)") }
+                            if abs(anim.waveAmplitude - 0.2) > 0.01 { args.append("amplitude=\(f(anim.waveAmplitude))") }
+                            animStr = "ApplyWave(\(args.joined(separator: ", ")))"
+                            
+                        case "Wiggle":
+                            var args = [obj]
+                            if abs(anim.wiggleScaleValue - 1.1) > 0.01 { args.append("scale_value=\(f(anim.wiggleScaleValue))") }
+                            if anim.wiggleCount != 6 { args.append("n_wiggles=\(anim.wiggleCount)") }
+                            animStr = "Wiggle(\(args.joined(separator: ", ")))"
+                            
+                        // --- Transform ---
+                        case "MoveTo":
+                            var moveCmd = "\(obj).animate.move_to([\(f(anim.targetX)), \(f(anim.targetY)), 0])"
+                            if abs(anim.targetScale - 1.0) > 0.01 {
+                                moveCmd += ".scale(\(f(anim.targetScale)))"
                             }
+                            animStr = moveCmd
+                            
+                        case "Rotate":
+                            let rad = String(format: "%.4f", anim.rotationAngle * .pi / 180.0)
+                            animStr = "Rotate(\(obj), angle=\(rad))"
+                            
+                        case "Transform":
+                            let target = anim.transformTargetID ?? obj
+                            animStr = "Transform(\(obj), \(target))"
+                            
+                        case "ReplacementTransform":
+                            let target = anim.transformTargetID ?? obj
+                            animStr = "ReplacementTransform(\(obj), \(target))"
+                            
+                        // --- Numbers ---
+                        case "ChangeDecimalToValue":
+                            animStr = "ChangeDecimalToValue(\(obj), \(f(anim.changeValue)))"
+                            
+                        default:
+                            animStr = "\(anim.animationType)(\(obj))"
                         }
+                        
+                        // Append rate_func to class-based animations if non-default
+                        if anim.rateFunc != "smooth" && !animStr.contains(".animate.") && animStr.hasSuffix(")") {
+                            animStr = String(animStr.dropLast()) + ", rate_func=\(anim.rateFunc))"
+                        }
+                        
+                        animStrings.append(animStr)
                     }
                     
                     if !animStrings.isEmpty {
+                        let rt = String(format: "%.1f", maxDuration)
+                        // Check for non-default rate_func on .animate-style anims
+                        let animateRF = step.animations.first(where: { $0.rateFunc != "smooth" && $0.animationType == "MoveTo" })?.rateFunc
+                        var playExtras = "run_time=\(rt)"
+                        if let rf = animateRF { playExtras += ", rate_func=\(rf)" }
+                        
                         let inner = animStrings.joined(separator: ", ")
-                        lines.append("        self.play(\(inner), run_time=\(String(format: "%.1f", maxDuration)))")
+                        switch step.playMode {
+                        case "lagged":
+                            lines.append("        self.play(LaggedStart(\(inner), lag_ratio=\(String(format: "%.2f", step.lagRatio))), \(playExtras))")
+                        case "sequential":
+                            lines.append("        self.play(Succession(\(inner)), \(playExtras))")
+                        default:
+                            lines.append("        self.play(\(inner), \(playExtras))")
+                        }
                     } else {
                         lines.append("        self.wait(\(String(format: "%.1f", step.waitTime)))")
                     }
@@ -639,6 +841,14 @@ class SceneState {
             if obj.color != "WHITE" { args.append("color=\(obj.color)") }
         case "RegularPolygon":
             args.append("n=6")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "DecimalNumber":
+            let numVal = Double(obj.text) ?? 0.0
+            args.append(String(format: "%.2f", numVal))
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "Integer":
+            let intVal = Int(obj.text) ?? 0
+            args.append("\(intVal)")
             if obj.color != "WHITE" { args.append("color=\(obj.color)") }
         default:
             if obj.color != "WHITE" { args.append("color=\(obj.color)") }
