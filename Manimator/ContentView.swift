@@ -192,7 +192,8 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(sceneState.selectedObjectIDs.isEmpty)
-                .help("Delete selected")
+                .help("Delete selected (⌘⌫)")
+                .keyboardShortcut(.delete, modifiers: .command)
                 
                 // Hidden Copy / Paste hooks
                 Button("") { sceneState.copySelected() }
