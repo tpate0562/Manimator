@@ -26,7 +26,7 @@ struct ManimatorApp: App {
                     sceneState.timeline.removeAll()
                     sceneState.objectCounters.removeAll()
                     sceneState.sceneName = "MyScene"
-                    sceneState.selectedObjectID = nil
+                    sceneState.selectedObjectIDs.removeAll()
                     sceneState.selectedStepID = nil
                     sceneState.regenerateCode()
                 }

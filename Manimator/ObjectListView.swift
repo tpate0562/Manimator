@@ -63,10 +63,17 @@ struct ObjectListView: View {
                         ForEach(sceneState.objects) { obj in
                             DisclosureGroup(
                                 isExpanded: Binding(
-                                    get: { sceneState.selectedObjectID == obj.id },
+                                    get: { sceneState.selectedObjectIDs.contains(obj.id) },
                                     set: { isExpanded in
-                                        if isExpanded { sceneState.selectedObjectID = obj.id }
-                                        else if sceneState.selectedObjectID == obj.id { sceneState.selectedObjectID = nil }
+                                        if isExpanded {
+                                            if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) {
+                                                sceneState.selectedObjectIDs.insert(obj.id)
+                                            } else {
+                                                sceneState.selectedObjectIDs = [obj.id]
+                                            }
+                                        } else {
+                                            sceneState.selectedObjectIDs.remove(obj.id)
+                                        }
                                     }
                                 )
                             ) {
@@ -74,7 +81,7 @@ struct ObjectListView: View {
                                     InspectorPanel(sceneState: sceneState, objectID: obj.id)
                                     
                                     Button(action: {
-                                        sceneState.duplicateObject(id: obj.id)
+                                        sceneState.duplicateObjects(ids: [obj.id])
                                     }) {
                                         HStack {
                                             Image(systemName: "doc.on.doc")
@@ -92,15 +99,23 @@ struct ObjectListView: View {
                             } label: {
                                 ObjectListRow(
                                     object: obj,
-                                    isSelected: obj.id == sceneState.selectedObjectID,
+                                    isSelected: sceneState.selectedObjectIDs.contains(obj.id),
                                     onSelect: {
-                                        if sceneState.selectedObjectID == obj.id {
-                                            sceneState.selectedObjectID = nil
+                                        if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) {
+                                            if sceneState.selectedObjectIDs.contains(obj.id) {
+                                                sceneState.selectedObjectIDs.remove(obj.id)
+                                            } else {
+                                                sceneState.selectedObjectIDs.insert(obj.id)
+                                            }
                                         } else {
-                                            sceneState.selectedObjectID = obj.id
+                                            if sceneState.selectedObjectIDs == Set([obj.id]) {
+                                                sceneState.selectedObjectIDs.removeAll()
+                                            } else {
+                                                sceneState.selectedObjectIDs = [obj.id]
+                                            }
                                         }
                                     },
-                                    onDelete: { sceneState.deleteObject(id: obj.id) }
+                                    onDelete: { sceneState.deleteObjects(ids: [obj.id]) }
                                 )
                             }
                             .tint(.secondary)
@@ -287,6 +302,19 @@ struct InspectorPanel: View {
                     }
                 }
                 
+                if obj.typeName == "Ellipse" {
+                    InspectorRow(label: "Dimensions") {
+                        HStack(spacing: 6) {
+                            NumField(label: "Width", value: obj.ellipseWidth) { v in
+                                sceneState.updateObject(id: objectID) { $0.ellipseWidth = max(0.1, v) }
+                            }
+                            NumField(label: "Height", value: obj.ellipseHeight) { v in
+                                sceneState.updateObject(id: objectID) { $0.ellipseHeight = max(0.1, v) }
+                            }
+                        }
+                    }
+                }
+                
                 // Color
                 InspectorRow(label: "Color") {
                     HStack(spacing: 8) {
@@ -368,7 +396,7 @@ struct InspectorPanel: View {
                 
                 // Delete
                 Button(role: .destructive) {
-                    sceneState.deleteObject(id: objectID)
+                    sceneState.deleteObjects(ids: [objectID])
                 } label: {
                     HStack {
                         Image(systemName: "trash")

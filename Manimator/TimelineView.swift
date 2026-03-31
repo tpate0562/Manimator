@@ -550,7 +550,10 @@ struct AddAnimationPopover: View {
         .frame(width: 450)
         .frame(maxHeight: 520)
         .onAppear {
-            if let first = sceneState.objects.first {
+            if let sel = sceneState.selectedObjectIDs.first, sceneState.objects.contains(where: { $0.id == sel }) {
+                selectedObjectID = sel
+                transformTargetID = sel
+            } else if let first = sceneState.objects.first {
                 selectedObjectID = first.id
                 transformTargetID = first.id
             }

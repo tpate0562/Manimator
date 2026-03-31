@@ -175,28 +175,37 @@ struct ContentView: View {
                 
                 // Duplicate
                 Button {
-                    if let sel = sceneState.selectedObjectID {
-                        sceneState.duplicateObject(id: sel)
-                    }
+                    sceneState.duplicateObjects(ids: sceneState.selectedObjectIDs)
                 } label: {
                     Image(systemName: "plus.square.on.square")
                 }
                 .buttonStyle(.borderless)
-                .disabled(sceneState.selectedObjectID == nil)
+                .disabled(sceneState.selectedObjectIDs.isEmpty)
                 .help("Duplicate (⌘D)")
                 .keyboardShortcut("d", modifiers: .command)
                 
                 // Delete
                 Button {
-                    if let sel = sceneState.selectedObjectID {
-                        sceneState.deleteObject(id: sel)
-                    }
+                    sceneState.deleteObjects(ids: sceneState.selectedObjectIDs)
                 } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .disabled(sceneState.selectedObjectID == nil)
+                .disabled(sceneState.selectedObjectIDs.isEmpty)
                 .help("Delete selected")
+                
+                // Hidden Copy / Paste hooks
+                Button("") { sceneState.copySelected() }
+                    .keyboardShortcut("c", modifiers: .command)
+                    .disabled(sceneState.selectedObjectIDs.isEmpty)
+                    .hidden()
+                    .frame(width: 0, height: 0)
+                
+                Button("") { sceneState.pasteObjects() }
+                    .keyboardShortcut("v", modifiers: .command)
+                    .disabled(sceneState.clipboardObjects.isEmpty)
+                    .hidden()
+                    .frame(width: 0, height: 0)
                 
                 Divider().frame(height: 20)
                 

@@ -15,49 +15,107 @@ struct DraggableOverlayView: View {
     private var manimYRange: ClosedRange<Double> { sceneState.manimYRange }
     
     @State private var draggedObjectID: String? = nil
-    @State private var dragCurrentScreenPos: CGPoint = .zero
+    @State private var dragScreenDelta: CGVector = .zero
+    @State private var dragSelectionRect: CGRect? = nil
     @State private var hoverLocation: CGPoint? = nil
     
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Background: click to deselect
+                // Background: drag to select, click to deselect
                 Color.black.opacity(0.85)
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        sceneState.selectedObjectID = nil
+                        sceneState.selectedObjectIDs.removeAll()
                     }
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let rect = CGRect(
+                                    x: min(value.startLocation.x, value.location.x),
+                                    y: min(value.startLocation.y, value.location.y),
+                                    width: abs(value.location.x - value.startLocation.x),
+                                    height: abs(value.location.y - value.startLocation.y)
+                                )
+                                dragSelectionRect = rect
+                                
+                                var newlySelected: Set<String> = []
+                                for object in sceneState.objects {
+                                    let pos = manimToScreen(object.position, in: geo.size)
+                                    if rect.contains(pos) {
+                                        newlySelected.insert(object.id)
+                                    }
+                                }
+                                
+                                if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) {
+                                    sceneState.selectedObjectIDs.formUnion(newlySelected)
+                                } else {
+                                    sceneState.selectedObjectIDs = newlySelected
+                                }
+                            }
+                            .onEnded { _ in
+                                dragSelectionRect = nil
+                            }
+                    )
                 
                 // Grid lines
                 CanvasGrid(size: geo.size, manimXRange: manimXRange, manimYRange: manimYRange)
                 
                 // Objects
                 ForEach(sceneState.objects) { object in
-                    let isDragging = draggedObjectID == object.id
+                    let isDragging = draggedObjectID != nil && sceneState.selectedObjectIDs.contains(object.id)
+                    let baseScreenPos = manimToScreen(object.position, in: geo.size)
                     let screenPos: CGPoint = isDragging
-                        ? dragCurrentScreenPos
-                        : manimToScreen(object.position, in: geo.size)
-                    let isSelected = object.id == sceneState.selectedObjectID
+                        ? CGPoint(x: baseScreenPos.x + dragScreenDelta.dx, y: baseScreenPos.y + dragScreenDelta.dy)
+                        : baseScreenPos
+                    let isSelected = sceneState.selectedObjectIDs.contains(object.id)
                     
                     ObjectVisual(object: object, isSelected: isSelected, isDragging: isDragging, canvasSize: geo.size, manimXRange: manimXRange, manimYRange: manimYRange)
                         .position(screenPos)
                         .gesture(
                             DragGesture(minimumDistance: 2, coordinateSpace: .named("canvas"))
                                 .onChanged { value in
-                                    if draggedObjectID != object.id {
-                                        draggedObjectID = object.id
-                                        sceneState.selectedObjectID = object.id
+                                    if !sceneState.selectedObjectIDs.contains(object.id) {
+                                        sceneState.selectedObjectIDs = [object.id]
                                     }
-                                    dragCurrentScreenPos = value.location
+                                    draggedObjectID = object.id
+                                    dragScreenDelta = CGVector(dx: value.translation.width, dy: value.translation.height)
                                 }
                                 .onEnded { value in
+                                    let startManim = screenToManim(value.startLocation, in: geo.size)
                                     let finalManim = screenToManim(value.location, in: geo.size)
-                                    sceneState.moveObject(id: object.id, to: finalManim)
+                                    let delta = CGPoint(x: finalManim.x - startManim.x, y: finalManim.y - startManim.y)
+                                    
+                                    for id in sceneState.selectedObjectIDs {
+                                        if let obj = sceneState.objects.first(where: { $0.id == id }) {
+                                            sceneState.moveObject(id: id, to: CGPoint(x: obj.position.x + delta.x, y: obj.position.y + delta.y))
+                                        }
+                                    }
                                     draggedObjectID = nil
+                                    dragScreenDelta = .zero
                                 }
                         )
                         .onTapGesture {
-                            sceneState.selectedObjectID = object.id
+                            if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) {
+                                if sceneState.selectedObjectIDs.contains(object.id) {
+                                    sceneState.selectedObjectIDs.remove(object.id)
+                                } else {
+                                    sceneState.selectedObjectIDs.insert(object.id)
+                                }
+                            } else {
+                                sceneState.selectedObjectIDs = [object.id]
+                            }
                         }
+                }
+                
+                // Marquee Selection Rectangle
+                if let rect = dragSelectionRect {
+                    Rectangle()
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [4]))
+                        .background(Color.accentColor.opacity(0.1))
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
                 }
                 
                 // Crosshairs
@@ -95,14 +153,14 @@ struct DraggableOverlayView: View {
         .coordinateSpace(name: "canvas")
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onKeyPress(.delete) {
-            if let sel = sceneState.selectedObjectID {
-                sceneState.deleteObject(id: sel)
+            if !sceneState.selectedObjectIDs.isEmpty {
+                sceneState.deleteObjects(ids: sceneState.selectedObjectIDs)
             }
             return .handled
         }
         .onKeyPress(.init(Character(UnicodeScalar(127)))) { // backspace
-            if let sel = sceneState.selectedObjectID {
-                sceneState.deleteObject(id: sel)
+            if !sceneState.selectedObjectIDs.isEmpty {
+                sceneState.deleteObjects(ids: sceneState.selectedObjectIDs)
             }
             return .handled
         }
@@ -217,7 +275,7 @@ struct ObjectVisual: View {
         case "Rectangle":                       return 4.0 * unit
         case "Triangle":                        return 2.0 * unit
         case "RegularPolygon", "Polygon":       return 2.0 * unit
-        case "Ellipse":                         return 2.0 * unit
+        case "Ellipse":                         return CGFloat(object.ellipseWidth) * unit
         case "Star":                            return 2.0 * unit
         case "Line", "DashedLine":              return 2.0 * unit
         case "Arrow", "DoubleArrow":            return 2.0 * unit
@@ -234,7 +292,7 @@ struct ObjectVisual: View {
         case "Rectangle":                       return 2.0 * unit
         case "Triangle":                        return 2.0 * unit
         case "RegularPolygon", "Polygon":       return 2.0 * unit
-        case "Ellipse":                         return 1.0 * unit
+        case "Ellipse":                         return CGFloat(object.ellipseHeight) * unit
         case "Star":                            return 2.0 * unit
         case "Line", "DashedLine":              return max(2, object.strokeWidth)
         case "Arrow", "DoubleArrow":            return max(10, object.strokeWidth * 2)

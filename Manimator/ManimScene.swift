@@ -35,12 +35,16 @@ struct ManimObject: Identifiable, Hashable, Codable {
     var graphWidth: Double = 10.0
     var graphHeight: Double = 6.0
     
+    var ellipseWidth: Double = 2.0
+    var ellipseHeight: Double = 1.0
+    
     enum CodingKeys: String, CodingKey {
         case id, variableName, typeName, position, color, fillColor, scale, rotation, opacity, strokeWidth, text
         case equation, xRangeMin, xRangeMax, yRangeMin, yRangeMax, graphWidth, graphHeight
+        case ellipseWidth, ellipseHeight
     }
     
-    init(id: String, variableName: String, typeName: String, position: CGPoint = .zero, color: String = "WHITE", fillColor: String? = nil, scale: Double = 1.0, rotation: Double = 0.0, opacity: Double = 1.0, strokeWidth: Double = 2.0, text: String = "", equation: String = "np.sin(x)", xRangeMin: Double = -5.0, xRangeMax: Double = 5.0, yRangeMin: Double = -3.0, yRangeMax: Double = 3.0, graphWidth: Double = 10.0, graphHeight: Double = 6.0) {
+    init(id: String, variableName: String, typeName: String, position: CGPoint = .zero, color: String = "WHITE", fillColor: String? = nil, scale: Double = 1.0, rotation: Double = 0.0, opacity: Double = 1.0, strokeWidth: Double = 2.0, text: String = "", equation: String = "np.sin(x)", xRangeMin: Double = -5.0, xRangeMax: Double = 5.0, yRangeMin: Double = -3.0, yRangeMax: Double = 3.0, graphWidth: Double = 10.0, graphHeight: Double = 6.0, ellipseWidth: Double = 2.0, ellipseHeight: Double = 1.0) {
         self.id = id
         self.variableName = variableName
         self.typeName = typeName
@@ -59,6 +63,8 @@ struct ManimObject: Identifiable, Hashable, Codable {
         self.yRangeMax = yRangeMax
         self.graphWidth = graphWidth
         self.graphHeight = graphHeight
+        self.ellipseWidth = ellipseWidth
+        self.ellipseHeight = ellipseHeight
     }
     
     init(from decoder: Decoder) throws {
@@ -82,6 +88,9 @@ struct ManimObject: Identifiable, Hashable, Codable {
         self.yRangeMax = try container.decodeIfPresent(Double.self, forKey: .yRangeMax) ?? 3.0
         self.graphWidth = try container.decodeIfPresent(Double.self, forKey: .graphWidth) ?? 10.0
         self.graphHeight = try container.decodeIfPresent(Double.self, forKey: .graphHeight) ?? 6.0
+        
+        self.ellipseWidth = try container.decodeIfPresent(Double.self, forKey: .ellipseWidth) ?? 2.0
+        self.ellipseHeight = try container.decodeIfPresent(Double.self, forKey: .ellipseHeight) ?? 1.0
     }
     
     // MARK: - Static Data
@@ -370,8 +379,10 @@ class SceneState {
     /// The chronological steps of animations in the scene.
     var timeline: [TimelineStep] = []
     
-    var selectedObjectID: String? = nil
+    var selectedObjectIDs: Set<String> = []
     var selectedStepID: UUID? = nil
+    
+    var clipboardObjects: [ManimObject] = []
     
     var sceneName: String = "MyScene"
     
@@ -438,7 +449,7 @@ class SceneState {
                 self.objectCounters[baseName] = current + 1
             }
             
-            self.selectedObjectID = nil
+            self.selectedObjectIDs.removeAll()
             self.selectedStepID = nil
             self.regenerateCode()
         }
@@ -483,39 +494,82 @@ class SceneState {
         }
         
         objects.append(obj)
-        selectedObjectID = varName
+        selectedObjectIDs = [varName]
         regenerateCode()
     }
     
-    func deleteObject(id: String) {
-        objects.removeAll { $0.id == id }
-        if selectedObjectID == id {
-            selectedObjectID = nil
-        }
+    func deleteObjects(ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        objects.removeAll { ids.contains($0.id) }
+        selectedObjectIDs.subtracting(ids)
         
-        // Remove object from all timeline steps
+        // Remove objects from all timeline steps
         for i in 0..<timeline.count {
-            timeline[i].animations.removeAll { $0.targetObjectID == id }
+            timeline[i].animations.removeAll { ids.contains($0.targetObjectID) }
         }
         
         regenerateCode()
     }
     
-    func duplicateObject(id: String) {
-        guard let source = objects.first(where: { $0.id == id }) else { return }
-        let baseName = source.typeName.lowercased()
-        let count = (objectCounters[baseName] ?? 0) + 1
-        objectCounters[baseName] = count
-        let varName = "\(baseName)_\(count)"
+    func duplicateObjects(ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        var newSelection: Set<String> = []
         
-        var copy = source
-        copy.id = varName
-        copy.variableName = varName
-        copy.position.x += 0.5
-        copy.position.y -= 0.5
+        let sortedObjectsToDuplicate = objects.filter { ids.contains($0.id) }
+        for source in sortedObjectsToDuplicate {
+            let baseName = source.typeName.lowercased()
+            let count = (objectCounters[baseName] ?? 0) + 1
+            objectCounters[baseName] = count
+            let varName = "\(baseName)_\(count)"
+            
+            var copy = source
+            copy.id = varName
+            copy.variableName = varName
+            copy.position.x += 0.5
+            copy.position.y -= 0.5
+            
+            objects.append(copy)
+            newSelection.insert(varName)
+        }
         
-        objects.append(copy)
-        selectedObjectID = varName
+        selectedObjectIDs = newSelection
+        regenerateCode()
+    }
+    
+    func copySelected() {
+        clipboardObjects = objects.filter { selectedObjectIDs.contains($0.id) }
+    }
+    
+    func pasteObjects() {
+        guard !clipboardObjects.isEmpty else { return }
+        var newSelection: Set<String> = []
+        
+        for source in clipboardObjects {
+            let baseName = source.typeName.lowercased()
+            let count = (objectCounters[baseName] ?? 0) + 1
+            objectCounters[baseName] = count
+            let varName = "\(baseName)_\(count)"
+            
+            var copy = source
+            copy.id = varName
+            copy.variableName = varName
+            copy.position.x += 0.5
+            copy.position.y -= 0.5
+            
+            objects.append(copy)
+            newSelection.insert(varName)
+        }
+        
+        // Let user paste again to spawn more, we update clipboard references optionally, 
+        // but it's simpler to keep original clipboard positions so subsequent pastes 
+        // stack up if we don't offset clipboard. Wait, to make subsequent pastes offset,
+        // we can update the clipboard's positions.
+        for i in 0..<clipboardObjects.count {
+            clipboardObjects[i].position.x += 0.5
+            clipboardObjects[i].position.y -= 0.5
+        }
+        
+        selectedObjectIDs = newSelection
         regenerateCode()
     }
     
@@ -842,6 +896,10 @@ class SceneState {
         case "Line", "Arrow", "DoubleArrow", "DashedLine":
             args.append("LEFT")
             args.append("RIGHT")
+            if obj.color != "WHITE" { args.append("color=\(obj.color)") }
+        case "Ellipse":
+            args.append("width=\(String(format: "%.2f", obj.ellipseWidth))")
+            args.append("height=\(String(format: "%.2f", obj.ellipseHeight))")
             if obj.color != "WHITE" { args.append("color=\(obj.color)") }
         case "RegularPolygon":
             args.append("n=6")
