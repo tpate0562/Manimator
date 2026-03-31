@@ -233,6 +233,7 @@ struct AnimParamFields: View {
     @Binding var targetScale: Double
     @Binding var rotationAngle: Double
     @Binding var transformTargetID: String
+    @Binding var useCopy: Bool
     @Binding var changeValue: Double
     
     var body: some View {
@@ -337,6 +338,7 @@ struct AnimParamFields: View {
                     }
                 }.labelsHidden()
             }
+            Toggle("Use Copy", isOn: $useCopy).font(.caption)
             
         // --- Numbers ---
         case "ChangeDecimalToValue":
@@ -389,6 +391,7 @@ struct AddAnimationPopover: View {
     @State private var targetScale: Double = 1.0
     @State private var rotationAngle: Double = 180.0
     @State private var transformTargetID: String = ""
+    @State private var useCopy: Bool = false
     // Composition
     @State private var playMode: String = "parallel"
     @State private var lagRatio: Double = 0.5
@@ -512,6 +515,7 @@ struct AddAnimationPopover: View {
                             targetScale: $targetScale,
                             rotationAngle: $rotationAngle,
                             transformTargetID: $transformTargetID,
+                            useCopy: $useCopy,
                             changeValue: $changeValue
                         )
                         
@@ -596,6 +600,7 @@ struct AddAnimationPopover: View {
             anim.rotationAngle = rotationAngle
         case "Transform", "ReplacementTransform":
             anim.transformTargetID = transformTargetID
+            anim.useCopy = useCopy
         case "ChangeDecimalToValue":
             anim.changeValue = changeValue
         default: break
@@ -636,6 +641,7 @@ struct EditAnimationPopover: View {
     @State private var targetScale: Double = 1.0
     @State private var rotationAngle: Double = 180.0
     @State private var transformTargetID: String = ""
+    @State private var useCopy: Bool = false
     // Numbers
     @State private var changeValue: Double = 0.0
     
@@ -679,6 +685,7 @@ struct EditAnimationPopover: View {
                     targetScale: $targetScale,
                     rotationAngle: $rotationAngle,
                     transformTargetID: $transformTargetID,
+                    useCopy: $useCopy,
                     changeValue: $changeValue
                 )
                 
@@ -725,6 +732,7 @@ struct EditAnimationPopover: View {
         growEdge = animation.growEdge
         rotationAngle = animation.rotationAngle
         transformTargetID = animation.transformTargetID ?? sceneState.objects.first?.id ?? ""
+        useCopy = animation.useCopy
         changeValue = animation.changeValue
     }
     
@@ -747,6 +755,7 @@ struct EditAnimationPopover: View {
         a.fadeScale = fadeScale; a.growEdge = growEdge
         a.rotationAngle = rotationAngle
         a.transformTargetID = transformTargetID
+        a.useCopy = useCopy
         a.changeValue = changeValue
         
         sceneState.timeline[stepIdx].animations[animIdx] = a

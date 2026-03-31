@@ -214,6 +214,7 @@ struct ManimAnimation: Identifiable, Hashable, Codable {
     // Transform parameters
     var rotationAngle: Double = 180.0
     var transformTargetID: String? = nil
+    var useCopy: Bool = false
     
     // Numbers parameters
     var changeValue: Double = 0.0
@@ -270,7 +271,7 @@ struct ManimAnimation: Identifiable, Hashable, Codable {
         case waveAmplitude, waveDirection
         case wiggleScaleValue, wiggleCount
         case shiftDirection, fadeScale, growEdge
-        case rotationAngle, transformTargetID
+        case rotationAngle, transformTargetID, useCopy
         case changeValue, rateFunc
     }
     
@@ -303,6 +304,7 @@ struct ManimAnimation: Identifiable, Hashable, Codable {
         self.growEdge = try c.decodeIfPresent(String.self, forKey: .growEdge) ?? "DOWN"
         self.rotationAngle = try c.decodeIfPresent(Double.self, forKey: .rotationAngle) ?? 180.0
         self.transformTargetID = try c.decodeIfPresent(String.self, forKey: .transformTargetID)
+        self.useCopy = try c.decodeIfPresent(Bool.self, forKey: .useCopy) ?? false
         self.changeValue = try c.decodeIfPresent(Double.self, forKey: .changeValue) ?? 0.0
         self.rateFunc = try c.decodeIfPresent(String.self, forKey: .rateFunc) ?? "smooth"
     }
@@ -563,7 +565,7 @@ class SceneState {
             a.waveAmplitude = src.waveAmplitude; a.waveDirection = src.waveDirection
             a.wiggleScaleValue = src.wiggleScaleValue; a.wiggleCount = src.wiggleCount
             a.shiftDirection = src.shiftDirection; a.fadeScale = src.fadeScale; a.growEdge = src.growEdge
-            a.rotationAngle = src.rotationAngle; a.transformTargetID = src.transformTargetID
+            a.rotationAngle = src.rotationAngle; a.transformTargetID = src.transformTargetID; a.useCopy = src.useCopy
             a.changeValue = src.changeValue; a.rateFunc = src.rateFunc
             return a
         }
@@ -776,11 +778,13 @@ class SceneState {
                             
                         case "Transform":
                             let target = anim.transformTargetID ?? obj
-                            animStr = "Transform(\(obj), \(target))"
+                            let src = anim.useCopy ? "\(obj).copy()" : obj
+                            animStr = "Transform(\(src), \(target))"
                             
                         case "ReplacementTransform":
                             let target = anim.transformTargetID ?? obj
-                            animStr = "ReplacementTransform(\(obj), \(target))"
+                            let src = anim.useCopy ? "\(obj).copy()" : obj
+                            animStr = "ReplacementTransform(\(src), \(target))"
                             
                         // --- Numbers ---
                         case "ChangeDecimalToValue":
